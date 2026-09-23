@@ -113,7 +113,7 @@ export class Overwing {
   }
 
   private async request<T>(method: string, path: string, init: { body?: unknown; idempotencyKey?: string; acceptStatuses?: number[] } = {}): Promise<T> {
-    const headers: Record<string, string> = { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json", "User-Agent": "overwing-js/0.1.0" };
+    const headers: Record<string, string> = { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json", "User-Agent": "overwing-js/0.2.0" };
     if (init.body !== undefined) headers["Content-Type"] = "application/json";
     if (init.idempotencyKey) headers["Idempotency-Key"] = init.idempotencyKey;
 

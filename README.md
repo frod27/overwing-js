@@ -8,7 +8,7 @@
 </p>
 
 <p align="center"><strong>Guardrails for LLM output, in one line.</strong><br>
-Every model response gets a <code>pass</code> / <code>fail</code> / <code>review</code> verdict with calibrated confidence before it reaches your user.</p>
+Vercel AI SDK middleware, OpenAI Agents SDK guardrails, and a typed client. Every model response gets a <code>pass</code> / <code>fail</code> / <code>review</code> verdict with calibrated confidence before it reaches your user.</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/overwing"><img alt="npm" src="https://img.shields.io/npm/v/overwing?color=0B1220&label=overwing"></a>
@@ -66,6 +66,29 @@ overwingGuardrail({
   failOpen: false,                  // true = if Overwing is unreachable, let the response through unscored
 });
 ```
+
+## OpenAI Agents SDK guardrails
+
+```ts
+import { Agent, run } from "@openai/agents";
+import { overwingInputGuardrail, overwingOutputGuardrail } from "overwing/openai-agents";
+
+const agent = new Agent({
+  name: "Support",
+  instructions: "Help the customer.",
+  inputGuardrails: [overwingInputGuardrail()],     // scores the user's message
+  outputGuardrails: [overwingOutputGuardrail()],   // scores the agent's final answer
+});
+
+try {
+  const result = await run(agent, "Reach me at dana@example.com to sort out the refund.");
+} catch (err) {
+  // InputGuardrailTripwireTriggered / OutputGuardrailTripwireTriggered
+  // err.result.output.outputInfo.evaluation → the full Overwing verdict
+}
+```
+
+Both accept `ruleSet`, `tripOn: "fail" | "fail-or-review"`, `metadata`, `onVerdict`, and `failOpen`. Input guardrails run in parallel with the agent by default; pass `runInParallel: false` to block before the model is called.
 
 ## Client
 

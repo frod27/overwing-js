@@ -1,7 +1,7 @@
 {
   "name": "overwing",
-  "version": "0.1.0",
-  "description": "Overwing SDK: guardrails for LLM output. Typed client for the Overwing API plus a Vercel AI SDK middleware that checks every model response before it ships.",
+  "version": "0.2.0",
+  "description": "Overwing SDK: guardrails for LLM output. Typed client for the Overwing API, a Vercel AI SDK middleware, and OpenAI Agents SDK guardrails that check every response before it ships.",
   "license": "MIT",
   "type": "module",
   "homepage": "https://overwing.ai",
@@ -23,6 +23,10 @@
     "./ai-sdk": {
       "types": "./dist/ai-sdk.d.ts",
       "import": "./dist/ai-sdk.js"
+    },
+    "./openai-agents": {
+      "types": "./dist/openai-agents.d.ts",
+      "import": "./dist/openai-agents.js"
     }
   },
   "files": [
@@ -49,21 +53,29 @@
     "ai-sdk",
     "middleware",
     "agents",
-    "typescript"
+    "typescript",
+    "openai-agents",
+    "openai-agents-sdk",
+    "guardrail"
   ],
   "engines": {
     "node": ">=20"
   },
   "peerDependencies": {
-    "@ai-sdk/provider": ">=3.0.0"
+    "@ai-sdk/provider": ">=3.0.0",
+    "@openai/agents": ">=0.1.0"
   },
   "peerDependenciesMeta": {
     "@ai-sdk/provider": {
+      "optional": true
+    },
+    "@openai/agents": {
       "optional": true
     }
   },
   "devDependencies": {
     "@ai-sdk/provider": "^4.0.18",
+    "@openai/agents": "^0.18.0",
     "@types/node": "^26.6.2",
     "typescript": "^7.0.2"
   }
