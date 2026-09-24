@@ -19,6 +19,8 @@ export type EvaluateOptions = {
   ruleSet?: string;
   /** Opaque context stored with the evaluation and echoed in webhooks. Max 8 KB. */
   metadata?: Record<string, unknown>;
+  /** Facts the rules may reference (recipient, channel, ownership), sent to the model as state next to the text. Max 8 KB. */
+  context?: Record<string, unknown>;
   /** Retrying with the same key within 24 h returns the stored result. */
   idempotencyKey?: string;
 };
@@ -67,7 +69,7 @@ export class Overwing {
   /** Score one text. Throws OverwingError on any non-2xx. */
   async evaluate(input: string, options: EvaluateOptions = {}): Promise<Evaluation> {
     const res = await this.request<Evaluation>("POST", "/api/v1/evaluate", {
-      body: { input, rule_set: options.ruleSet ?? "content-safety", metadata: options.metadata },
+      body: { input, rule_set: options.ruleSet ?? "content-safety", metadata: options.metadata, context: options.context },
       idempotencyKey: options.idempotencyKey,
     });
     return res;
@@ -76,7 +78,7 @@ export class Overwing {
   /** Score up to 50 texts in one call. Items succeed or fail independently. */
   async evaluateBatch(items: BatchItem[], options: Omit<EvaluateOptions, "metadata"> = {}): Promise<BatchResult> {
     return this.request<BatchResult>("POST", "/api/v1/evaluate/batch", {
-      body: { rule_set: options.ruleSet ?? "content-safety", items },
+      body: { rule_set: options.ruleSet ?? "content-safety", items, context: options.context },
       idempotencyKey: options.idempotencyKey,
       acceptStatuses: [502],
     });
@@ -113,7 +115,7 @@ export class Overwing {
   }
 
   private async request<T>(method: string, path: string, init: { body?: unknown; idempotencyKey?: string; acceptStatuses?: number[] } = {}): Promise<T> {
-    const headers: Record<string, string> = { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json", "User-Agent": "overwing-js/0.2.0" };
+    const headers: Record<string, string> = { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json", "User-Agent": "overwing-js/0.3.0" };
     if (init.body !== undefined) headers["Content-Type"] = "application/json";
     if (init.idempotencyKey) headers["Idempotency-Key"] = init.idempotencyKey;
 

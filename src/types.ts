@@ -1,5 +1,9 @@
 export type Verdict = "pass" | "fail" | "review";
 export type QuestionType = "choice" | "score" | "noul";
+/** What a rule says to do when it fails. */
+export type RuleAction = "block" | "redact" | "review";
+/** One word to act on for the whole evaluation. */
+export type RecommendedAction = "block" | "redact" | "review" | "allow";
 
 export type RuleResult = {
   rule: string;
@@ -8,11 +12,13 @@ export type RuleResult = {
   probability: number;
   confidence: number;
   verdict: Verdict;
+  action: RuleAction;
 };
 
 export type Evaluation = {
   id: string;
   verdict: Verdict;
+  recommended_action: RecommendedAction;
   aggregate_score: number;
   confidence: number;
   latency_ms: number;
@@ -22,6 +28,7 @@ export type Evaluation = {
 export type EvaluationDetail = Evaluation & {
   rule_set: string;
   input: string;
+  context: Record<string, unknown> | null;
   input_token_count: number | null;
   metadata: Record<string, unknown> | null;
   created_at: string;
@@ -29,7 +36,7 @@ export type EvaluationDetail = Evaluation & {
 
 export type EvaluationSummary = Omit<EvaluationDetail, "input" | "input_token_count" | "results">;
 
-export type BatchItem = { id?: string; input: string; metadata?: Record<string, unknown> };
+export type BatchItem = { id?: string; input: string; metadata?: Record<string, unknown>; context?: Record<string, unknown> };
 export type BatchResult = {
   summary: { total: number; pass: number; fail: number; review: number; errors: number };
   results: Array<{ id: string | null; index: number; evaluation: Evaluation | null; error: string | null }>;
@@ -45,6 +52,8 @@ export type RuleDefinition = {
     | { question: string };
   fail_condition: { failOn: string[] } | { failOn: boolean } | { failAbove: number };
   review_condition?: { confidenceBelow: number } | null;
+  /** What a caller should do when this rule fails. Default "block". */
+  action?: RuleAction;
   weight?: number;
 };
 

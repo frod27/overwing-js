@@ -40,6 +40,14 @@ export type GuardrailOptions = {
   streaming?: "buffer" | "passthrough";
   /** Metadata stored with each evaluation, e.g. a user or session id. */
   metadata?: (params: LanguageModelV4CallOptions) => Record<string, unknown> | undefined;
+  /** Context the rules may reference (recipient, channel, ownership), e.g. () => ({ recipient: "customer", channel: "chat" }). */
+  context?: (params: LanguageModelV4CallOptions) => Record<string, unknown> | undefined;
+  /**
+   * When true (default), a fail whose recommended_action is "redact" uses the
+   * `replace` behaviour instead of `onFail`, so a personal-data hit swaps the
+   * text rather than throwing. Set false to treat every fail the same.
+   */
+  honorActions?: boolean;
   /** Called with every verdict, for logging. */
   onVerdict?: (evaluation: Evaluation, phase: "input" | "output") => void;
   /** If the Overwing API is unreachable: false (default) throws, true lets the output through unscored. */
@@ -78,6 +86,7 @@ function metadataFor(evaluation: Evaluation): Record<string, string | number | b
   return {
     id: evaluation.id,
     verdict: evaluation.verdict,
+    recommended_action: evaluation.recommended_action ?? (evaluation.verdict === "fail" ? "block" : evaluation.verdict === "review" ? "review" : "allow"),
     aggregate_score: evaluation.aggregate_score,
     confidence: evaluation.confidence,
     latency_ms: evaluation.latency_ms,
@@ -93,6 +102,7 @@ export function overwingGuardrail(options: GuardrailOptions = {}): LanguageModel
   const onReview = options.onReview ?? "annotate";
   const streaming = options.streaming ?? "buffer";
   const failOpen = options.failOpen ?? false;
+  const honorActions = options.honorActions ?? true;
 
   const replacementFor = (e: Evaluation): string =>
     typeof options.replacement === "function" ? options.replacement(e) : (options.replacement ?? DEFAULT_REPLACEMENT);
@@ -100,7 +110,7 @@ export function overwingGuardrail(options: GuardrailOptions = {}): LanguageModel
   async function score(text: string, params: LanguageModelV4CallOptions, phase: "input" | "output"): Promise<Evaluation | null> {
     if (text.length === 0) return null;
     try {
-      const evaluation = await client.evaluate(text, { ruleSet, metadata: { ...(options.metadata?.(params) ?? {}), phase, source: "ai-sdk" } });
+      const evaluation = await client.evaluate(text, { ruleSet, metadata: { ...(options.metadata?.(params) ?? {}), phase, source: "ai-sdk" }, context: options.context?.(params) });
       options.onVerdict?.(evaluation, phase);
       return evaluation;
     } catch (err) {
@@ -109,8 +119,13 @@ export function overwingGuardrail(options: GuardrailOptions = {}): LanguageModel
     }
   }
 
-  function actionFor(verdict: Verdict): VerdictAction | "pass" {
-    if (verdict === "fail") return onFail;
+  function actionFor(evaluation: Evaluation): VerdictAction | "pass" {
+    const verdict: Verdict = evaluation.verdict;
+    if (verdict === "fail") {
+      if (honorActions && evaluation.recommended_action === "redact" && onFail === "throw") return "replace";
+      if (honorActions && evaluation.recommended_action === "review") return onReview;
+      return onFail;
+    }
     if (verdict === "review") return onReview;
     return "pass";
   }
@@ -131,7 +146,7 @@ export function overwingGuardrail(options: GuardrailOptions = {}): LanguageModel
       const evaluation = await score(textOf(result.content), params, "output");
       if (!evaluation) return result;
       const providerMetadata = { ...(result.providerMetadata ?? {}), overwing: metadataFor(evaluation) };
-      const action = actionFor(evaluation.verdict);
+      const action = actionFor(evaluation);
       if (action === "throw") throw new OverwingGuardrailError(evaluation, "output");
       if (action === "replace") {
         return { ...result, content: [{ type: "text", text: replacementFor(evaluation) }], providerMetadata };
@@ -147,7 +162,7 @@ export function overwingGuardrail(options: GuardrailOptions = {}): LanguageModel
 
       const finish = async (controller: TransformStreamDefaultController<LanguageModelV4StreamPart>, finishPart: Extract<LanguageModelV4StreamPart, { type: "finish" }>): Promise<void> => {
         const evaluation = await score(text.trim(), params, "output");
-        const action = evaluation ? actionFor(evaluation.verdict) : "pass";
+        const action = evaluation ? actionFor(evaluation) : "pass";
         const meta = evaluation ? { ...(finishPart.providerMetadata ?? {}), overwing: metadataFor(evaluation) } : finishPart.providerMetadata;
 
         if (evaluation && action === "throw") {

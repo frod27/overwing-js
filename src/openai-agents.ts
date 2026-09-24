@@ -32,6 +32,8 @@ export type AgentsGuardrailOptions = {
   name?: string;
   /** Metadata stored with each evaluation, e.g. a user or session id. */
   metadata?: Record<string, unknown> | (() => Record<string, unknown>);
+  /** Context the rules may reference (recipient, channel, ownership). */
+  context?: Record<string, unknown> | (() => Record<string, unknown>);
   /** Called with every verdict, for logging. */
   onVerdict?: (evaluation: Evaluation, phase: "input" | "output") => void;
   /** If the Overwing API is unreachable: false (default) throws, true lets the run continue unscored. */
@@ -47,6 +49,7 @@ type Common = {
   ruleSet: string;
   tripOn: "fail" | "fail-or-review";
   metadata: () => Record<string, unknown>;
+  context: () => Record<string, unknown> | undefined;
   onVerdict?: (evaluation: Evaluation, phase: "input" | "output") => void;
   failOpen: boolean;
 };
@@ -63,6 +66,7 @@ function setup(options: AgentsGuardrailOptions): Common {
     ruleSet: options.ruleSet ?? "content-safety",
     tripOn: options.tripOn ?? "fail",
     metadata: resolveMetadata(options.metadata),
+    context: () => (typeof options.context === "function" ? options.context() : options.context),
     onVerdict: options.onVerdict,
     failOpen: options.failOpen ?? false,
   };
@@ -102,7 +106,7 @@ async function run(common: Common, text: string, phase: "input" | "output"): Pro
   if (text.length === 0) return { tripwireTriggered: false, outputInfo: { evaluation: null, skipped: "empty" } };
   let evaluation: Evaluation;
   try {
-    evaluation = await common.client.evaluate(text, { ruleSet: common.ruleSet, metadata: { ...common.metadata(), phase, source: "openai-agents" } });
+    evaluation = await common.client.evaluate(text, { ruleSet: common.ruleSet, metadata: { ...common.metadata(), phase, source: "openai-agents" }, context: common.context() });
   } catch (err) {
     if (common.failOpen && err instanceof OverwingError) return { tripwireTriggered: false, outputInfo: { evaluation: null, skipped: "unreachable" } };
     throw err;

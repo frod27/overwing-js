@@ -84,6 +84,19 @@ describe("overwingGuardrail (generate)", () => {
   });
 });
 
+describe("overwingGuardrail (actions)", () => {
+  it("a redact-level fail replaces instead of throwing, and context is forwarded", async () => {
+    const { fetch, calls } = scriptedFetch([{ status: 200, body: fakeEvaluation("fail", "eval_0000000000000002", "redact") }]);
+    const mw = overwingGuardrail({ client: new Overwing({ apiKey: "k", fetch }), context: () => ({ recipient: "customer", channel: "chat" }) });
+    const r = await mw.wrapGenerate!({ doGenerate: async () => generateResult("call me at 555-0142"), doStream: async () => { throw new Error("unused"); }, params, model });
+    assert.equal((r.content[0] as { text: string }).text, "I can't share that response.");
+    assert.equal((r.providerMetadata as { overwing: { recommended_action: string } }).overwing.recommended_action, "redact");
+    assert.deepEqual(JSON.parse(String(calls[0]?.init.body)).context, { recipient: "customer", channel: "chat" });
+    const strict = overwingGuardrail({ client: new Overwing({ apiKey: "k", fetch: scriptedFetch([{ status: 200, body: fakeEvaluation("fail", "eval_0000000000000002", "redact") }]).fetch }), honorActions: false });
+    await assert.rejects(() => strict.wrapGenerate!({ doGenerate: async () => generateResult("call me"), doStream: async () => { throw new Error("unused"); }, params, model }), OverwingGuardrailError);
+  });
+});
+
 describe("overwingGuardrail (stream)", () => {
   it("buffers by default: releases text only after a passing verdict", async () => {
     const { fetch } = scriptedFetch([{ status: 200, body: fakeEvaluation("pass") }]);

@@ -49,7 +49,8 @@ What happens by default:
 | --- | --- | --- |
 | `pass` | Response returned, verdict attached to `providerMetadata.overwing` | |
 | `review` | Returned and annotated so you can route it | `onReview: "throw" \| "replace"` |
-| `fail` | Throws `OverwingGuardrailError` (carries the full evaluation) | `onFail: "replace" \| "annotate"` |
+| `fail`, recommended action `block` | Throws `OverwingGuardrailError` (carries the full evaluation) | `onFail: "replace" \| "annotate"` |
+| `fail`, recommended action `redact` (e.g. personal data) | Replaces the text with the safe fallback instead of throwing | `honorActions: false` to treat every fail alike |
 
 Streaming is **buffered by default**: tokens are held until the model finishes and the verdict is in, so a failing response never reaches the screen. Set `streaming: "passthrough"` to stream immediately and end with an error on fail.
 
@@ -62,6 +63,8 @@ overwingGuardrail({
   checkInput: true,                 // also score the user's latest message before calling the model
   streaming: "buffer",              // "buffer" (default) | "passthrough"
   metadata: (params) => ({ userId: "u_123" }),
+  context: (params) => ({ recipient: "customer", channel: "chat" }),   // facts the rules may reference
+  honorActions: true,               // redact-level fails replace rather than throw
   onVerdict: (evaluation, phase) => console.log(phase, evaluation.verdict),
   failOpen: false,                  // true = if Overwing is unreachable, let the response through unscored
 });
@@ -98,7 +101,15 @@ import { Overwing } from "overwing";
 const ow = new Overwing({ apiKey: process.env.OVERWING_API_KEY });
 
 const e = await ow.evaluate("Reach me at dana@example.com to sort out the refund.");
-// e.verdict === "fail"; e.results → [{ rule: "pii_detected", verdict: "fail", confidence: 0.98, … }, …]
+// e.verdict === "fail"; e.recommended_action === "redact"
+// e.results → [{ rule: "pii_detected", verdict: "fail", action: "redact", confidence: 0.98, … }, …]
+
+// Give the rules context and use the context-aware prebuilt set:
+const ok = await ow.evaluate("Reach me at dana@example.com to sort out the refund.", {
+  ruleSet: "outbound-message",
+  context: { recipient: "one known customer", channel: "email", owns_contact_info: true },
+});
+// ok.verdict === "pass": the details are the sender's own, deliberately shared
 
 const batch = await ow.evaluateBatch([{ id: "a", input: "…" }, { id: "b", input: "…" }]);
 const custom = await ow.ruleSets.create({ name: "Support tone", slug: "support-tone", rules: [/* … */] });

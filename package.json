@@ -1,6 +1,6 @@
 {
   "name": "overwing",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Overwing SDK: guardrails for LLM output. Typed client for the Overwing API, a Vercel AI SDK middleware, and OpenAI Agents SDK guardrails that check every response before it ships.",
   "license": "MIT",
   "type": "module",
