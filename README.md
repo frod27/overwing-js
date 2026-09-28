@@ -8,7 +8,7 @@
 </p>
 
 <p align="center"><strong>Guardrails for LLM output, in one line.</strong><br>
-Vercel AI SDK middleware, OpenAI Agents SDK guardrails, and a typed client. Every model response gets a <code>pass</code> / <code>fail</code> / <code>review</code> verdict with calibrated confidence before it reaches your user.</p>
+Vercel AI SDK middleware, OpenAI Agents SDK guardrails, and a typed client. Also: <a href="#atlas-who-is-this-user-agent-no-key-needed">Atlas</a> user-agent lookups with no key, and <a href="#tower-let-an-agent-operate-a-legacy-system">Tower</a> for agents operating legacy systems. Every model response gets a <code>pass</code> / <code>fail</code> / <code>review</code> verdict with calibrated confidence before it reaches your user.</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/overwing"><img alt="npm" src="https://img.shields.io/npm/v/overwing?color=0B1220&label=overwing"></a>
@@ -93,6 +93,63 @@ try {
 
 Both accept `ruleSet`, `tripOn: "fail" | "fail-or-review"`, `metadata`, `onVerdict`, and `failOpen`. Input guardrails run in parallel with the agent by default; pass `runInParallel: false` to block before the model is called.
 
+## Atlas: who is this user agent? (no key needed)
+
+[Overwing Atlas](https://overwing.ai/atlas) is a registry of AI crawlers, fetchers and browser agents. Give it a `User-Agent` string and it says what the string claims to be and whether that claim can be trusted.
+
+```ts
+import { Atlas } from "overwing";
+
+const atlas = new Atlas(); // no key: 10 lookups a day. With OVERWING_API_KEY set: 100, or your Atlas plan's limit.
+
+const who = await atlas.lookup(request.headers.get("user-agent") ?? "");
+if (who.identified) {
+  who.claims.agent;         // "GPTBot"
+  who.claims.operator;      // "OpenAI"
+  who.claims.purpose_class; // "Training / bulk crawl"
+  who.claims.verification;  // "User-agent string only (spoofable)"
+}
+atlas.lastLookupLimit;      // { limit: 10, remaining: 9 }
+```
+
+Read `verification` before you act on the claim. `Web Bot Auth signature` means the operator signs its requests and you can check the signature. `User-agent string only (spoofable)` means anyone can send that string. When the allowance is spent, `lookup` throws an `OverwingError` with `status: 429` and `retryAfterSeconds`.
+
+`atlas.agents({ purpose, operator, verification, q, limit })` searches the registry and `atlas.summary()` returns traffic shares and field-scan headlines. With an API key, the same client is at `new Overwing().atlas`.
+
+## Tower: let an agent operate a legacy system
+
+[Overwing Tower](https://overwing.ai/products/tower) sits between an agent and a system of record. The agent calls typed operations. Tower rules on each one: execute it, ask a person, or reject it. Every step gets a signed receipt.
+
+There are two keys. The **organization key** sets things up. Each **agent key** is scoped to the operations that agent may call.
+
+```ts
+import { Overwing, Tower } from "overwing";
+
+// Once, as the organization
+const ow = new Overwing();                                  // OVERWING_API_KEY
+await ow.tower.loadTemplate();                              // starter workflow: email PO to order entry (mock IBM i)
+const { agent } = await ow.tower.agent({ name: "order-intake", scopes: ["create_order", "cancel_order"] });
+agent.key;                                                  // ow_agent_... shown once: store it as OVERWING_AGENT_KEY
+
+// Then, as the agent
+const tower = new Tower();                                  // OVERWING_AGENT_KEY
+const { operations } = await tower.capabilities();          // what you may call, with JSON Schema inputs
+
+const action = await tower.submit("create_order", order, { idempotencyKey: email.messageId });
+
+switch (action.status) {
+  case "executed": break;                                   // done: action.result is what the system returned
+  case "pending":  await tower.waitForReview(action.action_id); break;  // a person must approve; do not resubmit
+  case "rejected": break;                                   // do not retry unchanged: action.decision.reason says why
+}
+```
+
+`submit` resolves for every ruling and throws only when the request itself is wrong. Those errors are typed for agents: `err.code` (`invalid_input`, `forbidden_scope`, `quota_exceeded`, ...), `err.field`, `err.retryable`, and `err.suggestedFix`.
+
+Use a stable `idempotencyKey` per business request. Repeating it returns the original outcome, marked `replayed`, instead of acting twice.
+
+Also on the agent client: `decide` (a ruling with no side effects), `submit(..., { dryRun: true })`, `get`, `compensate` (undo an executed action), and `receipts.get / verify / publicKey`. On the organization client: `tower.agents.create / list / revoke`.
+
 ## Client
 
 ```ts
@@ -117,7 +174,7 @@ const usage = await ow.usage();
 ow.lastRateLimit; // { daily: { remaining, resetAt }, burst: { … } } from the last evaluate call
 ```
 
-Everything on the API is covered: `evaluate`, `evaluateBatch`, `evaluations.get/list/delete`, `ruleSets.list/get/create/update/delete`, `usage`, `me`. Errors are `OverwingError` with `status` and `retryAfterSeconds`. 429s with a short `Retry-After` and 5xx are retried automatically. Pass `idempotencyKey` to make retries safe.
+Everything on the API is covered: `evaluate`, `evaluateBatch`, `evaluations.get/list/delete`, `ruleSets.list/get/create/update/delete`, `usage`, `me`. Errors are `OverwingError` with `status` and `retryAfterSeconds`, plus `code`, `field`, `retryable` and `suggestedFix` when the API supplies them. 429s with a short `Retry-After` and 5xx are retried automatically. Pass `idempotencyKey` to make retries safe.
 
 Runs anywhere `fetch` exists: Node 20+, Bun, Deno, Vercel Edge, Cloudflare Workers.
 

@@ -82,3 +82,115 @@ export type RateLimitInfo = {
   daily: { limit: number; remaining: number; resetAt: Date } | null;
   burst: { limit: number; remaining: number; resetAt: Date } | null;
 };
+
+// ---- Overwing Atlas ----
+
+export type AtlasVerification = "Web Bot Auth signature" | "User-agent string only (spoofable)" | "Unattributable / spoofed" | "Published IP ranges" | (string & {});
+
+export type AtlasAgent = {
+  slug: string;
+  agent: string;
+  operator: string | null;
+  user_agent_tokens: string[];
+  web_bot_auth_key_directory: string | null;
+  description: string | null;
+  /** Curated fields, present with Atlas Pro or Team, and on lookup matches. */
+  purpose_class?: string | null;
+  verification?: AtlasVerification | null;
+  [field: string]: unknown;
+};
+
+export type AtlasLookup = {
+  user_agent: string;
+  identified: boolean;
+  /** What the string claims to be. `verification` says whether the claim can be trusted. */
+  claims: { agent: string; operator: string | null; purpose_class: string | null; verification: AtlasVerification | null; matched_token: string } | null;
+  trust_note: string;
+  matches: Array<{ matched_token: string; strength: string | number; agent: AtlasAgent }>;
+  /** Present on keyless calls. */
+  access?: { mode: "keyless"; daily_limit: number; remaining_today: number; next: Record<string, string> };
+};
+
+export type AtlasLookupLimit = { limit: number; remaining: number };
+
+export type AtlasAgentList = { total: number; limit: number; offset: number; fields: "public" | "full" | (string & {}); tier: string; agents: AtlasAgent[] };
+
+export type AtlasSummary = {
+  registry: { count: number; operators: number; purpose_classes: Record<string, number>; verification: Record<string, number> };
+  traffic_shares: Array<{ agent: string; value: number | string; period: string; [field: string]: unknown }>;
+  sector_scans: Array<{ sector: string; date: string; headline_findings: Array<{ finding: string; [field: string]: unknown }>; [field: string]: unknown }>;
+  report_summary: string | null;
+  [field: string]: unknown;
+};
+
+// ---- Overwing Tower ----
+
+export type TowerOutcome = "auto" | "review" | "reject";
+export type TowerActionStatus = "pending" | "approved" | "executed" | "failed" | "compensated" | "rejected";
+
+export type TowerDecision = {
+  decision_id: string;
+  outcome: TowerOutcome;
+  score: number | null;
+  reason: string;
+  provider: "jev" | "local_rules";
+  thresholds: { auto: number; review: number };
+  results: Array<{ question_id: string; answer: string | number | boolean; probability: number; confidence: number; passed: boolean; gated: boolean }>;
+  checks: Array<{ check: string; passed: boolean; detail?: string }>;
+  latency_ms: number | null;
+  operation?: string;
+};
+
+export type TowerError = { code: string; field?: string; message: string; retryable: boolean; suggested_fix?: string };
+
+export type TowerAction = {
+  action_id: string;
+  operation: string;
+  status: TowerActionStatus;
+  dry_run: boolean;
+  idempotency_key: string;
+  /** The full decision on submit; only `decision_id` on some reads. */
+  decision: TowerDecision | { decision_id: string } | null;
+  /** What the legacy system returned. */
+  result: Record<string, unknown> | null;
+  error: TowerError | Record<string, unknown> | null;
+  /** Set when the action is waiting on a person. */
+  review_id?: string;
+  /** True when this answer is the stored outcome of an earlier request with the same idempotency key. */
+  replayed?: boolean;
+  /** On a dry run: what would have happened. */
+  would?: string;
+  compensated_by?: string | null;
+  executed_at?: string | null;
+  created_at?: string;
+};
+
+export type TowerCapabilities = {
+  agent: { id: string; name: string; scopes: string[] };
+  operations: Array<{ operation: string; workflow: string; is_write: boolean; compensating_operation: string | null; input_schema: Record<string, unknown>; description: string | null }>;
+};
+
+export type TowerReceipt = {
+  receipt_id: string;
+  sequence: number;
+  kind: "decision" | "action" | "review" | "compensation";
+  action_id: string | null;
+  decision_id: string | null;
+  payload: Record<string, unknown>;
+  payload_hash: string;
+  prev_hash: string;
+  chain_hash: string;
+  signature: string;
+  signing_key_id: string;
+  created_at: string;
+};
+
+export type TowerVerifyReport = { ok: boolean; checked: number; first_break: { sequence: number; problem: string } | null; from: number; to: number; signing_key_ids: string[]; latest_sequence: number };
+
+export type TowerPublicKey = { key_id: string; algorithm: "Ed25519"; public_key_pem: string; how: string };
+
+export type TowerAgent = { agent_id: string; name: string; scopes: string[]; status: "active" | "revoked"; key_prefix: string; created_at: string; last_used_at: string | null; revoked_at: string | null };
+
+export type TowerAgentWithKey = TowerAgent & { key: string; key_shown_once: true; use: string };
+
+export type TowerTemplate = { workflow_id: string; workflow: string; created: boolean; operations: string[]; target_system: string; sample_input: { operation: string; input: Record<string, unknown> }; next: string };

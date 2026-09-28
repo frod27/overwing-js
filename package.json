@@ -1,7 +1,7 @@
 {
   "name": "overwing",
-  "version": "0.3.0",
-  "description": "Overwing SDK: guardrails for LLM output. Typed client for the Overwing API, a Vercel AI SDK middleware, and OpenAI Agents SDK guardrails that check every response before it ships.",
+  "version": "0.4.0",
+  "description": "Overwing SDK: guardrails for LLM output, Atlas user-agent lookups (no key needed), and Tower clearance for agents operating legacy systems. Typed client, Vercel AI SDK middleware, and OpenAI Agents SDK guardrails.",
   "license": "MIT",
   "type": "module",
   "homepage": "https://overwing.ai",
@@ -56,7 +56,11 @@
     "typescript",
     "openai-agents",
     "openai-agents-sdk",
-    "guardrail"
+    "guardrail",
+    "user-agent",
+    "bot-detection",
+    "web-bot-auth",
+    "legacy-systems"
   ],
   "engines": {
     "node": ">=20"

@@ -1,4 +1,7 @@
+import { Atlas } from "./atlas.js";
 import { OverwingError } from "./errors.js";
+import { Transport, env } from "./http.js";
+import { TowerSetup } from "./tower.js";
 import type { BatchItem, BatchResult, Evaluation, EvaluationDetail, EvaluationSummary, Me, RateLimitInfo, RuleDefinition, RuleSet, Usage, Verdict } from "./types.js";
 
 export type OverwingOptions = {
@@ -27,10 +30,6 @@ export type EvaluateOptions = {
 
 export type ListEvaluationsOptions = { limit?: number; cursor?: string; verdict?: Verdict; ruleSet?: string };
 
-function env(name: string): string | undefined {
-  return typeof process !== "undefined" && process.env ? process.env[name] : undefined;
-}
-
 function parseRateHeaders(headers: Headers): RateLimitInfo {
   const num = (k: string): number | null => {
     const v = headers.get(k);
@@ -47,23 +46,23 @@ function parseRateHeaders(headers: Headers): RateLimitInfo {
 /** Typed client for the Overwing API. */
 export class Overwing {
   readonly baseUrl: string;
-  private readonly apiKey: string;
-  private readonly timeoutMs: number;
-  private readonly maxRetries: number;
-  private readonly fetchImpl: typeof fetch;
+  private readonly http: Transport;
   /** Rate-limit headers from the most recent evaluate call. */
   lastRateLimit: RateLimitInfo = { daily: null, burst: null };
+  /** Overwing Atlas with this key's allowance. For keyless use, construct `new Atlas()` instead. */
+  readonly atlas: Atlas;
+  /** Overwing Tower setup: load the starter workflow, create and revoke agent identities. Agents operate through `new Tower({ agentKey })`. */
+  readonly tower: TowerSetup;
 
   constructor(options: OverwingOptions = {}) {
     const apiKey = options.apiKey ?? env("OVERWING_API_KEY");
     if (!apiKey) {
       throw new OverwingError("Overwing API key missing. Pass { apiKey } or set OVERWING_API_KEY. Get one at https://overwing.ai/login", 0);
     }
-    this.apiKey = apiKey;
-    this.baseUrl = (options.baseUrl ?? env("OVERWING_BASE_URL") ?? "https://overwing.ai").replace(/\/$/, "");
-    this.timeoutMs = options.timeoutMs ?? 15_000;
-    this.maxRetries = options.maxRetries ?? 2;
-    this.fetchImpl = options.fetch ?? fetch;
+    this.http = new Transport(apiKey, options);
+    this.baseUrl = this.http.baseUrl;
+    this.atlas = new Atlas({}, this.http);
+    this.tower = new TowerSetup(this.http);
   }
 
   /** Score one text. Throws OverwingError on any non-2xx. */
@@ -114,49 +113,10 @@ export class Overwing {
     return this.request("GET", "/api/v1/me");
   }
 
-  private async request<T>(method: string, path: string, init: { body?: unknown; idempotencyKey?: string; acceptStatuses?: number[] } = {}): Promise<T> {
-    const headers: Record<string, string> = { Authorization: `Bearer ${this.apiKey}`, Accept: "application/json", "User-Agent": "overwing-js/0.3.0" };
-    if (init.body !== undefined) headers["Content-Type"] = "application/json";
-    if (init.idempotencyKey) headers["Idempotency-Key"] = init.idempotencyKey;
-
-    let attempt = 0;
-    for (;;) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-      let res: Response;
-      try {
-        res = await this.fetchImpl(`${this.baseUrl}${path}`, { method, headers, body: init.body === undefined ? undefined : JSON.stringify(init.body), signal: controller.signal });
-      } catch (err) {
-        clearTimeout(timer);
-        if (attempt < this.maxRetries) {
-          attempt += 1;
-          await new Promise((r) => setTimeout(r, 250 * attempt));
-          continue;
-        }
-        throw new OverwingError(`Overwing API unreachable: ${err instanceof Error ? err.message : String(err)}`, 0);
-      }
-      clearTimeout(timer);
-
-      if (path.startsWith("/api/v1/evaluate")) this.lastRateLimit = parseRateHeaders(res.headers);
-
-      const retryAfter = res.headers.get("retry-after");
-      const retryAfterSeconds = retryAfter ? Number(retryAfter) : null;
-      const retryable = res.status === 429 || res.status >= 500;
-      const accepted = init.acceptStatuses?.includes(res.status) ?? false;
-      if (retryable && !accepted && attempt < this.maxRetries && (retryAfterSeconds === null || retryAfterSeconds <= 5)) {
-        attempt += 1;
-        await new Promise((r) => setTimeout(r, retryAfterSeconds !== null ? retryAfterSeconds * 1000 : 300 * attempt));
-        continue;
-      }
-
-      const text = await res.text();
-      let data: unknown = null;
-      try { data = text ? JSON.parse(text) : null; } catch { /* non-JSON body */ }
-      if (!res.ok && !accepted) {
-        const message = typeof data === "object" && data !== null && "error" in data ? String((data as { error: unknown }).error) : `HTTP ${res.status}`;
-        throw new OverwingError(message, res.status, retryAfterSeconds);
-      }
-      return data as T;
-    }
+  private request<T>(method: string, path: string, init: { body?: unknown; idempotencyKey?: string; acceptStatuses?: number[] } = {}): Promise<T> {
+    return this.http.request<T>(method, path, {
+      ...init,
+      onHeaders: path.startsWith("/api/v1/evaluate") ? (headers) => { this.lastRateLimit = parseRateHeaders(headers); } : undefined,
+    });
   }
 }
