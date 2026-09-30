@@ -5,7 +5,11 @@ import { TowerSetup } from "./tower.js";
 import type { BatchItem, BatchResult, Evaluation, EvaluationDetail, EvaluationSummary, Me, RateLimitInfo, RuleDefinition, RuleSet, Usage, Verdict } from "./types.js";
 
 export type OverwingOptions = {
-  /** API key (ow_live_...). Defaults to process.env.OVERWING_API_KEY. */
+  /**
+   * API key (ow_live_...). Defaults to process.env.OVERWING_API_KEY.
+   * Optional: with no key, `evaluate` uses the free allowance (10 a day, inputs up to 2,000 characters,
+   * the prebuilt rule sets, text not stored). Everything else needs a key.
+   */
   apiKey?: string;
   /** Defaults to https://overwing.ai, or process.env.OVERWING_BASE_URL. */
   baseUrl?: string;
@@ -47,6 +51,8 @@ function parseRateHeaders(headers: Headers): RateLimitInfo {
 export class Overwing {
   readonly baseUrl: string;
   private readonly http: Transport;
+  /** True when no key is configured. `evaluate` then uses the free allowance; every other method throws. */
+  readonly keyless: boolean;
   /** Rate-limit headers from the most recent evaluate call. */
   lastRateLimit: RateLimitInfo = { daily: null, burst: null };
   /** Overwing Atlas with this key's allowance. For keyless use, construct `new Atlas()` instead. */
@@ -56,10 +62,8 @@ export class Overwing {
 
   constructor(options: OverwingOptions = {}) {
     const apiKey = options.apiKey ?? env("OVERWING_API_KEY");
-    if (!apiKey) {
-      throw new OverwingError("Overwing API key missing. Pass { apiKey } or set OVERWING_API_KEY. Get one at https://overwing.ai/login", 0);
-    }
-    this.http = new Transport(apiKey, options);
+    this.keyless = !apiKey;
+    this.http = new Transport(apiKey || undefined, options);
     this.baseUrl = this.http.baseUrl;
     this.atlas = new Atlas({}, this.http);
     this.tower = new TowerSetup(this.http);
@@ -68,8 +72,9 @@ export class Overwing {
   /** Score one text. Throws OverwingError on any non-2xx. */
   async evaluate(input: string, options: EvaluateOptions = {}): Promise<Evaluation> {
     const res = await this.request<Evaluation>("POST", "/api/v1/evaluate", {
-      body: { input, rule_set: options.ruleSet ?? "content-safety", metadata: options.metadata, context: options.context },
-      idempotencyKey: options.idempotencyKey,
+      // With no key the API keeps nothing and has nothing to replay, so metadata and the idempotency key are left out.
+      body: { input, rule_set: options.ruleSet ?? "content-safety", metadata: this.keyless ? undefined : options.metadata, context: options.context },
+      idempotencyKey: this.keyless ? undefined : options.idempotencyKey,
     });
     return res;
   }
@@ -114,6 +119,10 @@ export class Overwing {
   }
 
   private request<T>(method: string, path: string, init: { body?: unknown; idempotencyKey?: string; acceptStatuses?: number[] } = {}): Promise<T> {
+    // Only a single evaluation works without a key. Say so here, before a request that would come back 401.
+    if (this.keyless && !(method === "POST" && path === "/api/v1/evaluate")) {
+      return Promise.reject(new OverwingError("Overwing API key missing. Without a key only evaluate() works (10 a day). Pass { apiKey } or set OVERWING_API_KEY. POST https://overwing.ai/api/v1/signup issues a free key.", 0));
+    }
     return this.http.request<T>(method, path, {
       ...init,
       onHeaders: path.startsWith("/api/v1/evaluate") ? (headers) => { this.lastRateLimit = parseRateHeaders(headers); } : undefined,

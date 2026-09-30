@@ -23,7 +23,9 @@ Vercel AI SDK middleware, OpenAI Agents SDK guardrails, and a typed client. Also
 npm install overwing
 ```
 
-Get a free API key at [overwing.ai](https://overwing.ai/login) (250 evaluations a day), or let your agent sign itself up with one `POST` to `/api/v1/signup`. Try it first with no key: paste anything into the console at [overwing.ai](https://overwing.ai).
+It works with no key: `new Overwing().evaluate(text)` runs 10 evaluations a day on inputs up to 2,000 characters, and text sent without a key is not stored. For more, get a free API key at [overwing.ai](https://overwing.ai/login) (250 evaluations a day), or let your agent sign itself up with one `POST` to `/api/v1/signup`.
+
+The text can be in any language. It was tested on 2026-09-29 in Spanish, Portuguese, French, German, Japanese, Simplified Chinese, Korean, Arabic and Hindi: a small test, not a benchmark. Results come back in English.
 
 ## Vercel AI SDK middleware
 
@@ -155,7 +157,7 @@ Also on the agent client: `decide` (a ruling with no side effects), `submit(...,
 ```ts
 import { Overwing } from "overwing";
 
-const ow = new Overwing({ apiKey: process.env.OVERWING_API_KEY });
+const ow = new Overwing({ apiKey: process.env.OVERWING_API_KEY }); // or new Overwing() to try it with no key
 
 const e = await ow.evaluate("Reach me at dana@example.com to sort out the refund.");
 // e.verdict === "fail"; e.recommended_action === "redact"
@@ -184,6 +186,8 @@ Each rule has a fail condition, an optional review threshold, and a weight. The 
 
 ## Also from Overwing
 
-- [`overwing-mcp`](https://github.com/frod27/overwing-mcp): the same guardrails as MCP tools for Claude, Cursor, and any MCP client.
+- MCP: the same tools for Claude, Cursor and any MCP client, hosted at `https://overwing.ai/mcp` with no install, or from npm as [`overwing-mcp`](https://github.com/frod27/overwing-mcp).
+- A2A: `https://overwing.ai/a2a` answers "send message" for evaluations and User-Agent lookups.
+- Python: [`pip install overwing`](https://github.com/frod27/overwing-python).
 
 MIT © Overwing. Verdicts are produced by TypeSafe's Jev System One model; Overwing is not affiliated with TypeSafe.

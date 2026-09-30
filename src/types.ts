@@ -23,6 +23,8 @@ export type Evaluation = {
   confidence: number;
   latency_ms: number;
   results: RuleResult[];
+  /** Present only on an evaluation made with no key: what is left of the free allowance, and that the text was not stored. */
+  access?: { mode: "keyless"; daily_limit: number; remaining_today: number; input_stored: false; retrievable: false; note: string; next: Record<string, string> };
 };
 
 export type EvaluationDetail = Evaluation & {

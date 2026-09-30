@@ -4,11 +4,39 @@ import { Overwing, OverwingError } from "../dist/index.js";
 import { fakeEvaluation, scriptedFetch } from "./helpers.ts";
 
 describe("Overwing client", () => {
-  it("requires an API key", () => {
+  it("evaluates with no key: no Authorization header, no metadata, no idempotency key", async () => {
     const saved = process.env.OVERWING_API_KEY;
     delete process.env.OVERWING_API_KEY;
-    assert.throws(() => new Overwing(), OverwingError);
-    if (saved) process.env.OVERWING_API_KEY = saved;
+    try {
+      const access = { mode: "keyless", daily_limit: 10, remaining_today: 9, input_stored: false, retrievable: false, note: "", next: {} };
+      const { fetch, calls } = scriptedFetch([{ status: 200, body: { ...fakeEvaluation("pass"), access } }]);
+      const ow = new Overwing({ fetch, baseUrl: "https://example.test" });
+      assert.equal(ow.keyless, true);
+      const e = await ow.evaluate("hello", { metadata: { a: 1 }, idempotencyKey: "k1", ruleSet: "outbound-message", context: { channel: "email" } });
+      assert.equal(e.access?.remaining_today, 9);
+      const headers = calls[0]?.init.headers as Record<string, string>;
+      assert.equal("Authorization" in headers, false);
+      assert.equal("Idempotency-Key" in headers, false);
+      assert.deepEqual(JSON.parse(String(calls[0]?.init.body)), { input: "hello", rule_set: "outbound-message", context: { channel: "email" } });
+    } finally {
+      if (saved) process.env.OVERWING_API_KEY = saved;
+    }
+  });
+
+  it("with no key, everything but evaluate fails before a request is sent, and says how to get a key", async () => {
+    const saved = process.env.OVERWING_API_KEY;
+    delete process.env.OVERWING_API_KEY;
+    try {
+      const { fetch, calls } = scriptedFetch([{ status: 200, body: {} }]);
+      const ow = new Overwing({ fetch });
+      for (const call of [() => ow.usage(), () => ow.me(), () => ow.ruleSets.list(), () => ow.evaluations.get("eval_1"), () => ow.evaluateBatch([{ input: "x" }])]) {
+        await assert.rejects(call, (err: unknown) => err instanceof OverwingError && /signup/.test(err.message));
+      }
+      assert.equal(calls.length, 0);
+      assert.equal(new Overwing({ apiKey: "ow_live_test", fetch }).keyless, false);
+    } finally {
+      if (saved) process.env.OVERWING_API_KEY = saved;
+    }
   });
 
   it("sends the right request and parses rate-limit headers", async () => {
