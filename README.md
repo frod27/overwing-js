@@ -180,6 +180,16 @@ Everything on the API is covered: `evaluate`, `evaluateBatch`, `evaluations.get/
 
 Runs anywhere `fetch` exists: Node 20+, Bun, Deno, Vercel Edge, Cloudflare Workers.
 
+## Data handling
+
+Text you evaluate is sent to the Overwing API and from there to TypeSafe, whose Jev model produces the verdict. It is not used to train models. Without a key it is never stored. With a key, the text, context and verdict are stored so you can read them back, until you delete them; pass `store: false` to keep no text or context for a call:
+
+```ts
+await ow.evaluate(text, { store: false });
+```
+
+Organization-wide settings (`store_inputs`, `retention_days`) and keys restricted to running checks (`scope: "evaluate"`) are described at [overwing.ai/security](https://overwing.ai/security), along with subprocessors and how to report a vulnerability.
+
 ## How verdicts work
 
 Each rule has a fail condition, an optional review threshold, and a weight. The prebuilt `content-safety` set checks toxicity, personal data, self-harm, sexual content, and severity. **fail** means a rule matched. **review** means a rule was unsure. **pass** is everything else. Full guide: [overwing.ai/llms.txt](https://overwing.ai/llms.txt). Reference: [overwing.ai/docs](https://overwing.ai/docs).

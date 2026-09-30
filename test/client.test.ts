@@ -53,6 +53,17 @@ describe("Overwing client", () => {
     assert.equal(ow.lastRateLimit.burst?.limit, 30);
   });
 
+  it("passes store: false through on evaluate and batch, and leaves it out otherwise", async () => {
+    const { fetch, calls } = scriptedFetch([{ status: 200, body: fakeEvaluation("pass") }, { status: 200, body: { summary: {}, results: [] } }, { status: 200, body: fakeEvaluation("pass") }]);
+    const ow = new Overwing({ apiKey: "ow_live_test", fetch, baseUrl: "https://example.test" });
+    await ow.evaluate("hello", { store: false });
+    await ow.evaluateBatch([{ input: "a" }], { store: false });
+    await ow.evaluate("hello");
+    assert.equal(JSON.parse(String(calls[0]?.init.body)).store, false);
+    assert.equal(JSON.parse(String(calls[1]?.init.body)).store, false);
+    assert.equal("store" in JSON.parse(String(calls[2]?.init.body)), false);
+  });
+
   it("retries a 429 with a short Retry-After, then succeeds", async () => {
     const { fetch, calls } = scriptedFetch([{ status: 429, body: { error: "slow down" }, headers: { "retry-after": "0" } }, { status: 200, body: fakeEvaluation("pass") }]);
     const ow = new Overwing({ apiKey: "ow_live_test", fetch });

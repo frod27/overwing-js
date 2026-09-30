@@ -28,6 +28,8 @@ export type EvaluateOptions = {
   metadata?: Record<string, unknown>;
   /** Facts the rules may reference (recipient, channel, ownership), sent to the model as state next to the text. Max 8 KB. */
   context?: Record<string, unknown>;
+  /** False runs the check without keeping the input text or the context; the verdict and metadata are still recorded. */
+  store?: boolean;
   /** Retrying with the same key within 24 h returns the stored result. */
   idempotencyKey?: string;
 };
@@ -73,7 +75,7 @@ export class Overwing {
   async evaluate(input: string, options: EvaluateOptions = {}): Promise<Evaluation> {
     const res = await this.request<Evaluation>("POST", "/api/v1/evaluate", {
       // With no key the API keeps nothing and has nothing to replay, so metadata and the idempotency key are left out.
-      body: { input, rule_set: options.ruleSet ?? "content-safety", metadata: this.keyless ? undefined : options.metadata, context: options.context },
+      body: { input, rule_set: options.ruleSet ?? "content-safety", metadata: this.keyless ? undefined : options.metadata, context: options.context, store: options.store },
       idempotencyKey: this.keyless ? undefined : options.idempotencyKey,
     });
     return res;
@@ -82,7 +84,7 @@ export class Overwing {
   /** Score up to 50 texts in one call. Items succeed or fail independently. */
   async evaluateBatch(items: BatchItem[], options: Omit<EvaluateOptions, "metadata"> = {}): Promise<BatchResult> {
     return this.request<BatchResult>("POST", "/api/v1/evaluate/batch", {
-      body: { rule_set: options.ruleSet ?? "content-safety", items, context: options.context },
+      body: { rule_set: options.ruleSet ?? "content-safety", items, context: options.context, store: options.store },
       idempotencyKey: options.idempotencyKey,
       acceptStatuses: [502],
     });
