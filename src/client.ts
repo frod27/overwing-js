@@ -1,4 +1,5 @@
 import { Atlas } from "./atlas.js";
+import { Beacon } from "./beacon.js";
 import { OverwingError } from "./errors.js";
 import { Transport, env } from "./http.js";
 import { TowerSetup } from "./tower.js";
@@ -59,6 +60,8 @@ export class Overwing {
   lastRateLimit: RateLimitInfo = { daily: null, burst: null };
   /** Overwing Atlas with this key's allowance. For keyless use, construct `new Atlas()` instead. */
   readonly atlas: Atlas;
+  /** Overwing Beacon: is a site reachable by agents? Needs no key; the same client as `new Beacon()`. */
+  readonly beacon: Beacon;
   /** Overwing Tower setup: load the starter workflow, create and revoke agent identities. Agents operate through `new Tower({ agentKey })`. */
   readonly tower: TowerSetup;
 
@@ -68,6 +71,7 @@ export class Overwing {
     this.http = new Transport(apiKey || undefined, options);
     this.baseUrl = this.http.baseUrl;
     this.atlas = new Atlas({}, this.http);
+    this.beacon = new Beacon({}, this.http);
     this.tower = new TowerSetup(this.http);
   }
 

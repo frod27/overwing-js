@@ -118,6 +118,29 @@ Read `verification` before you act on the claim. `Web Bot Auth signature` means 
 
 `atlas.agents({ purpose, operator, verification, q, limit })` searches the registry and `atlas.summary()` returns traffic shares and field-scan headlines. With an API key, the same client is at `new Overwing().atlas`.
 
+## Beacon: is your product reachable by agents? (no key needed)
+
+[Overwing Beacon](https://overwing.ai/beacon) checks one site and answers three questions: can an agent find it, read it, and use it. It looks for robots.txt rules for AI agents, llms.txt, an MCP server card and endpoint, an A2A agent card and an OpenAPI document, and reads the home page the way an agent does. One check costs $5 by card or $1 over x402.
+
+```ts
+import { Beacon } from "overwing";
+
+const beacon = new Beacon();
+(await beacon.sample()).top_fixes;               // a real report, free, to see the shape
+
+const { id, checkout_url } = await beacon.start("example.com");
+// a person pays $5 at checkout_url; nothing runs until then
+const report = await beacon.waitForReport(id);   // polls: awaiting_payment, running, complete
+if (report.status === "complete") {
+  report.score;                                  // 0 to 100
+  report.verdict;                                // "yes" | "partly" | "no"
+  report.categories;                             // find, read, use, each with an answer
+  report.top_fixes;                              // [{ check, fix, gain }], most valuable first
+}
+```
+
+An agent with a wallet skips the checkout: pass `beacon.x402Url("example.com")` to any x402 client, pay $1 in USDC, and the report is the response.
+
 ## Tower: let an agent operate a legacy system
 
 [Overwing Tower](https://overwing.ai/products/tower) sits between an agent and a system of record. The agent calls typed operations. Tower rules on each one: execute it, ask a person, or reject it. Every step gets a signed receipt.

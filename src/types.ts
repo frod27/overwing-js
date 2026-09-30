@@ -196,3 +196,51 @@ export type TowerAgent = { agent_id: string; name: string; scopes: string[]; sta
 export type TowerAgentWithKey = TowerAgent & { key: string; key_shown_once: true; use: string };
 
 export type TowerTemplate = { workflow_id: string; workflow: string; created: boolean; operations: string[]; target_system: string; sample_input: { operation: string; input: Record<string, unknown> }; next: string };
+
+// ---- Overwing Beacon ----
+
+export type BeaconAnswer = "yes" | "partly" | "no";
+export type BeaconCategory = "find" | "read" | "use";
+
+export type BeaconCheck = {
+  id: string;
+  category: BeaconCategory;
+  title: string;
+  status: "pass" | "warn" | "fail";
+  points: number;
+  max: number;
+  /** What was found. */
+  detail: string;
+  /** What to change. Absent when the check passed. */
+  fix?: string;
+  /** The address that was read. */
+  evidence?: string;
+};
+
+export type BeaconReport = {
+  status?: "complete";
+  id: string;
+  url: string;
+  host: string;
+  scanned_at: string;
+  /** 0 to 100. */
+  score: number;
+  /** Is the product reachable by agents. */
+  verdict: BeaconAnswer;
+  summary: string;
+  categories: Array<{ key: BeaconCategory; title: string; question: string; answer: BeaconAnswer; points: number; max: number }>;
+  checks: BeaconCheck[];
+  /** The three changes worth the most, most valuable first. */
+  top_fixes: Array<{ check: string; fix: string; gain: number }>;
+  /** False when the model judgments could not be made; their checks are then left out. */
+  judged: boolean;
+  duration_ms: number;
+  requests: number;
+};
+
+export type BeaconStarted = { id: string; url: string; status: "awaiting_payment"; price_usd: number; checkout_url: string; status_url: string; report_url: string };
+
+export type BeaconStatus =
+  | (BeaconReport & { status: "complete" })
+  | { status: "running"; id: string; url: string }
+  | { status: "awaiting_payment"; id: string; url: string; price_usd: number; checkout_url: string | null };
