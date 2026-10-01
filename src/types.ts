@@ -238,9 +238,18 @@ export type BeaconReport = {
   requests: number;
 };
 
-export type BeaconStarted = { id: string; url: string; status: "awaiting_payment"; price_usd: number; checkout_url: string; status_url: string; report_url: string };
+/** What a check answers with when no key was sent: the report without its checks, with the first of its top fixes. */
+export type BeaconSummary = Pick<BeaconReport, "id" | "url" | "host" | "scanned_at" | "score" | "verdict" | "summary" | "categories" | "top_fixes"> & {
+  /** How many checks the full report holds, by result, and how many carry a fix. */
+  counts: { checks: number; pass: number; gaps: number; missing: number; fixes: number };
+  /** How to open the full report: a free account. */
+  full_report?: Record<string, string>;
+};
 
+export type BeaconStarted = { id: string; url: string; status: "queued"; price_usd: number; access: "full" | "summary"; status_url: string; report_url: string; saved_to_dashboard: boolean };
+
+/** Branch on `status`, then on `access`: `"full"` carries `checks`, `"summary"` carries `counts`. */
 export type BeaconStatus =
-  | (BeaconReport & { status: "complete" })
-  | { status: "running"; id: string; url: string }
-  | { status: "awaiting_payment"; id: string; url: string; price_usd: number; checkout_url: string | null };
+  | (BeaconReport & { status: "complete"; access: "full" })
+  | (BeaconSummary & { status: "complete"; access: "summary" })
+  | { status: "running"; id: string; url: string };

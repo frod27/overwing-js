@@ -60,7 +60,7 @@ export class Overwing {
   lastRateLimit: RateLimitInfo = { daily: null, burst: null };
   /** Overwing Atlas with this key's allowance. For keyless use, construct `new Atlas()` instead. */
   readonly atlas: Atlas;
-  /** Overwing Beacon: is a site reachable by agents? Needs no key; the same client as `new Beacon()`. */
+  /** Overwing Beacon: is a site reachable by agents? Free. With this client's key the report is the full one; `new Beacon()` with no key gets the summary. */
   readonly beacon: Beacon;
   /** Overwing Tower setup: load the starter workflow, create and revoke agent identities. Agents operate through `new Tower({ agentKey })`. */
   readonly tower: TowerSetup;
