@@ -78,7 +78,41 @@ export type Usage = {
   days: Array<{ date: string; eval_count: number; pass_count: number; fail_count: number; review_count: number; avg_latency_ms: number | null; total_input_tokens: number }>;
 };
 
-export type Me = { org_id: string; org: string; plan: string; daily_limit: number; webhook_configured: boolean };
+export type Me = {
+  org_id: string;
+  org: string;
+  plan: string;
+  daily_limit: number;
+  webhook_configured: boolean;
+  /** "key_only": an account made with no email. */
+  account?: "key_only" | "standard";
+  /** A domain the account has proved it controls, or null. */
+  verified_domain?: string | null;
+};
+
+/** What signing up with no email returns. `api_key` is shown once. */
+export type AccountCreated = {
+  org_id: string;
+  org: string;
+  plan: string;
+  account: "key_only";
+  daily_limit: number;
+  api_key: string;
+  key_prefix: string;
+  notice: string;
+};
+
+/** The one value to publish at a domain to prove control of it, as a TXT record or as a file. */
+export type DomainProofSteps = { value: string; dns: { type: "TXT"; name: string; value: string }; http: { url: string; body: string }; note: string };
+
+export type DomainProof = { domain: string; status: "pending_verification" | "verified"; verification?: DomainProofSteps; next?: string };
+
+/** The outcome of looking for a domain proof. `verified: false` means it was not there yet; ask again. */
+export type DomainCheck = { verified: true; domain: string } | { verified: false; error: string; verification?: DomainProofSteps };
+
+export type RecoveryStarted = { domain: string; verification: DomainProofSteps; expires_in_hours: number; next: string };
+
+export type KeyRecovered = { org_id: string; domain: string; api_key: string; key_prefix: string; revoked_keys: number; notice: string };
 
 export type RateLimitInfo = {
   daily: { limit: number; remaining: number; resetAt: Date } | null;

@@ -23,7 +23,7 @@ Vercel AI SDK middleware, OpenAI Agents SDK guardrails, and a typed client. Also
 npm install overwing
 ```
 
-It works with no key: `new Overwing().evaluate(text)` runs 10 evaluations a day on inputs up to 2,000 characters, and text sent without a key is not stored. For more, get a free API key at [overwing.ai](https://overwing.ai/login) (250 evaluations a day), or let your agent sign itself up with one `POST` to `/api/v1/signup`.
+It works with no key: `new Overwing().evaluate(text)` runs 10 evaluations a day on inputs up to 2,000 characters, and text sent without a key is not stored. For more, get a free API key at [overwing.ai](https://overwing.ai/login) (250 evaluations a day), or let your agent make its own account with `Overwing.signup()`, which needs no email (see [An account for an agent](#an-account-for-an-agent-no-email)).
 
 The text can be in any language. It was tested on 2026-09-29 in Spanish, Portuguese, French, German, Japanese, Simplified Chinese, Korean, Arabic and Hindi: a small test, not a benchmark. Results come back in English.
 
@@ -222,6 +222,31 @@ ow.lastRateLimit; // { daily: { remaining, resetAt }, burst: { … } } from the 
 Everything on the API is covered: `evaluate`, `evaluateBatch`, `evaluations.get/list/delete`, `ruleSets.list/get/create/update/delete`, `usage`, `me`. Errors are `OverwingError` with `status` and `retryAfterSeconds`, plus `code`, `field`, `retryable` and `suggestedFix` when the API supplies them. 429s with a short `Retry-After` and 5xx are retried automatically. Pass `idempotencyKey` to make retries safe.
 
 Runs anywhere `fetch` exists: Node 20+, Bun, Deno, Vercel Edge, Cloudflare Workers.
+
+### An account for an agent (no email)
+
+An agent has no inbox, and should not put a person's address on an account that person did not ask for. So an account needs no email:
+
+```ts
+const { account, client } = await Overwing.signup();   // nothing is sent to anyone
+saveSomewhereSafe(account.api_key);                    // shown once; there is no reset link
+await client.evaluate("…");                            // 50 evaluations a day to start
+```
+
+A domain the account proves it controls takes the place of the email. It raises the limits to the normal free tier, opens full Beacon reports, and makes a lost key recoverable:
+
+```ts
+const proof = await client.account.proveDomain("acme.com");
+proof.verification?.dns;    // publish this TXT record, or serve proof.verification.http.body at .http.url
+const check = await client.account.verifyDomain();
+if (!check.verified) check.error;                      // not there yet; DNS can take a few minutes
+
+// Key lost: prove the domain again. Every old key is revoked and one new key is returned.
+const started = await Overwing.startRecovery("acme.com");
+const { recovered, client: again } = await Overwing.finishRecovery("acme.com");
+```
+
+Registering an agent in Atlas on a domain (`atlas.register`) proves that domain for the account in the same step. `client.account.claim(email, password)` lets a person take charge later and get a dashboard login.
 
 ## Data handling
 

@@ -3,7 +3,10 @@ import { Beacon } from "./beacon.js";
 import { OverwingError } from "./errors.js";
 import { Transport, env } from "./http.js";
 import { TowerSetup } from "./tower.js";
-import type { BatchItem, BatchResult, Evaluation, EvaluationDetail, EvaluationSummary, Me, RateLimitInfo, RuleDefinition, RuleSet, Usage, Verdict } from "./types.js";
+import type { AccountCreated, BatchItem, BatchResult, DomainCheck, DomainProof, DomainProofSteps, Evaluation, EvaluationDetail, EvaluationSummary, KeyRecovered, Me, RateLimitInfo, RecoveryStarted, RuleDefinition, RuleSet, Usage, Verdict } from "./types.js";
+
+/** Where to send a call that needs no key: the base URL, timeout, retries and fetch of the caller's choosing. */
+export type KeylessOptions = Omit<OverwingOptions, "apiKey">;
 
 export type OverwingOptions = {
   /**
@@ -75,6 +78,47 @@ export class Overwing {
     this.tower = new TowerSetup(this.http);
   }
 
+  /**
+   * Create an account with no email, and a client that uses it. Nothing is sent to anyone.
+   * The key is the account: store `account.api_key` at once, since with no email there is no reset link.
+   * It starts at 50 evaluations a day; `client.account.proveDomain()` raises that and makes the key recoverable.
+   *
+   *   const { account, client } = await Overwing.signup();
+   *   saveSomewhereSafe(account.api_key);
+   */
+  static async signup(options: KeylessOptions & { orgName?: string } = {}): Promise<{ account: AccountCreated; client: Overwing }> {
+    const { orgName, ...rest } = options;
+    const account = await new Transport(undefined, rest).request<AccountCreated>("POST", "/api/v1/signup", { body: orgName ? { org_name: orgName } : {} });
+    return { account, client: new Overwing({ ...rest, apiKey: account.api_key }) };
+  }
+
+  /**
+   * Key lost? Begin recovering an account made with no email, by the domain it proved. No key needed.
+   * Publish `verification` at the domain, then call `Overwing.finishRecovery(domain)`.
+   */
+  static startRecovery(domain: string, options: KeylessOptions = {}): Promise<RecoveryStarted> {
+    return new Transport(undefined, options).request("POST", "/api/v1/signup/recover", { body: { domain } });
+  }
+
+  /** Finish a recovery. With the proof at the domain, every old key is revoked and one new key is returned, once. Throws OverwingError (422) while the proof is not there. */
+  static async finishRecovery(domain: string, options: KeylessOptions = {}): Promise<{ recovered: KeyRecovered; client: Overwing }> {
+    const recovered = await new Transport(undefined, options).request<KeyRecovered>("POST", "/api/v1/signup/recover/verify", { body: { domain } });
+    return { recovered, client: new Overwing({ ...options, apiKey: recovered.api_key }) };
+  }
+
+  /** The account itself: a domain in place of an email, and handing the account to a person. */
+  readonly account = {
+    /** Begin proving that the account controls a domain. Publish `verification` there, then call `verifyDomain()`. */
+    proveDomain: (domain: string): Promise<DomainProof> => this.request("POST", "/api/v1/org/domain", { body: { domain } }),
+    /** Look for the proof. Not there yet: `verified` is false with what was looked for; asking again is safe. */
+    verifyDomain: async (): Promise<DomainCheck> => {
+      const body = await this.request<{ domain?: string; status?: string; error?: string; verification?: DomainProofSteps }>("POST", "/api/v1/org/domain/verify", { acceptStatuses: [422] });
+      return body.status === "verified" && body.domain ? { verified: true, domain: body.domain } : { verified: false, error: body.error ?? "No proof found", verification: body.verification };
+    },
+    /** A person takes charge of an account made with no email: attaches a login. They get a confirmation message. */
+    claim: (email: string, password: string): Promise<{ org_id: string; account: "claimed"; email: string; next: string }> => this.request("POST", "/api/v1/org/claim", { body: { email, password } }),
+  };
+
   /** Score one text. Throws OverwingError on any non-2xx. */
   async evaluate(input: string, options: EvaluateOptions = {}): Promise<Evaluation> {
     const res = await this.request<Evaluation>("POST", "/api/v1/evaluate", {
@@ -127,7 +171,7 @@ export class Overwing {
   private request<T>(method: string, path: string, init: { body?: unknown; idempotencyKey?: string; acceptStatuses?: number[] } = {}): Promise<T> {
     // Only a single evaluation works without a key. Say so here, before a request that would come back 401.
     if (this.keyless && !(method === "POST" && path === "/api/v1/evaluate")) {
-      return Promise.reject(new OverwingError("Overwing API key missing. Without a key only evaluate() works (10 a day). Pass { apiKey } or set OVERWING_API_KEY. POST https://overwing.ai/api/v1/signup issues a free key.", 0));
+      return Promise.reject(new OverwingError("Overwing API key missing. Without a key only evaluate() works (10 a day). Pass { apiKey } or set OVERWING_API_KEY. Overwing.signup() makes an account with no email; POST https://overwing.ai/api/v1/signup issues a free key.", 0));
     }
     return this.http.request<T>(method, path, {
       ...init,

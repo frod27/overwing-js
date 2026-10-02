@@ -91,4 +91,49 @@ describe("Overwing client", () => {
     const b = await ow.evaluateBatch([{ input: "x" }]);
     assert.equal(b.summary.errors, 1);
   });
+
+  it("signs up with no email, sends no key, and hands back a client that uses the new one", async () => {
+    const { fetch, calls } = scriptedFetch([
+      { status: 201, body: { org_id: "o1", org: "Agent account", plan: "free", account: "key_only", daily_limit: 50, api_key: "ow_live_new", key_prefix: "ow_live_new", notice: "" } },
+      { status: 200, body: { org_id: "o1", org: "Agent account", plan: "free", daily_limit: 50, webhook_configured: false, account: "key_only", verified_domain: null } },
+    ]);
+    const { account, client } = await Overwing.signup({ fetch, baseUrl: "https://example.test" });
+    assert.equal(account.account, "key_only");
+    assert.equal(calls[0]?.url, "https://example.test/api/v1/signup");
+    assert.equal("Authorization" in (calls[0]?.init.headers as Record<string, string>), false);
+    assert.deepEqual(JSON.parse(String(calls[0]?.init.body)), {});
+    assert.equal(client.keyless, false);
+    assert.equal((await client.me()).account, "key_only");
+    assert.equal((calls[1]?.init.headers as Record<string, string>).Authorization, "Bearer ow_live_new");
+  });
+
+  it("proves a domain, and reads a proof that is not there yet as a state", async () => {
+    const steps = { value: "overwing-atlas-verification=tok", dns: { type: "TXT", name: "_overwing-atlas.acme.com", value: "overwing-atlas-verification=tok" }, http: { url: "https://acme.com/.well-known/overwing-atlas.txt", body: "overwing-atlas-verification=tok" }, note: "" };
+    const { fetch, calls } = scriptedFetch([
+      { status: 200, body: { domain: "acme.com", status: "pending_verification", verification: steps } },
+      { status: 422, body: { error: "No proof found.", verification: steps } },
+      { status: 200, body: { domain: "acme.com", status: "verified" } },
+    ]);
+    const ow = new Overwing({ apiKey: "ow_live_test", fetch, baseUrl: "https://example.test" });
+    assert.equal((await ow.account.proveDomain("acme.com")).verification?.dns.name, "_overwing-atlas.acme.com");
+    assert.deepEqual(JSON.parse(String(calls[0]?.init.body)), { domain: "acme.com" });
+    const first = await ow.account.verifyDomain();
+    assert.equal(first.verified, false);
+    assert.equal(!first.verified && first.error, "No proof found.");
+    assert.deepEqual(await ow.account.verifyDomain(), { verified: true, domain: "acme.com" });
+    assert.equal(calls[2]?.url, "https://example.test/api/v1/org/domain/verify");
+  });
+
+  it("recovers a lost key by domain with no key, and returns a client on the new one", async () => {
+    const { fetch, calls } = scriptedFetch([
+      { status: 200, body: { domain: "acme.com", verification: {}, expires_in_hours: 24, next: "" } },
+      { status: 200, body: { org_id: "o1", domain: "acme.com", api_key: "ow_live_again", key_prefix: "ow_live_agai", revoked_keys: 1, notice: "" } },
+    ]);
+    assert.equal((await Overwing.startRecovery("acme.com", { fetch, baseUrl: "https://example.test" })).expires_in_hours, 24);
+    const { recovered, client } = await Overwing.finishRecovery("acme.com", { fetch, baseUrl: "https://example.test" });
+    assert.equal(recovered.revoked_keys, 1);
+    assert.equal(client.keyless, false);
+    assert.equal(calls[1]?.url, "https://example.test/api/v1/signup/recover/verify");
+    for (const c of calls) assert.equal("Authorization" in (c.init.headers as Record<string, string>), false);
+  });
 });

@@ -1,7 +1,7 @@
 import { OverwingError } from "./errors.js";
 import type { OverwingErrorDetail } from "./errors.js";
 
-export const SDK_VERSION = "0.9.0";
+export const SDK_VERSION = "0.10.0";
 
 export type TransportOptions = {
   /** Defaults to https://overwing.ai, or process.env.OVERWING_BASE_URL. */
