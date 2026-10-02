@@ -55,4 +55,37 @@ describe("Atlas client", () => {
     await ow.atlas.lookup("GPTBot");
     assert.equal((calls[1]?.init.headers as Record<string, string>).Authorization, "Bearer ow_live_test");
   });
+
+  it("registers an agent, sending the fields under their API names", async () => {
+    const reg = { id: "areg_0123456789abcdef", status: "pending_verification", name: "AcmeBot", operator: "Acme, Inc.", domain: "acme.com", tokens: ["AcmeBot"], verification: { value: "overwing-atlas-verification=tok", dns: { type: "TXT", name: "_overwing-atlas.acme.com", value: "overwing-atlas-verification=tok" }, http: { url: "https://acme.com/.well-known/overwing-atlas.txt", body: "overwing-atlas-verification=tok" }, note: "" } };
+    const { fetch, calls } = scriptedFetch([{ status: 201, body: reg }]);
+    const atlas = new Atlas({ apiKey: "ow_live_test", fetch, baseUrl: "https://example.test" });
+    const out = await atlas.register({ name: "AcmeBot", operator: "Acme, Inc.", domain: "acme.com", tokens: ["AcmeBot"], userAgent: "AcmeBot/1.0", keyDirectoryUrl: "https://acme.com/keys", followsRobotsTxt: true });
+    assert.equal(out.verification?.dns.name, "_overwing-atlas.acme.com");
+    assert.equal(calls[0]?.url, "https://example.test/api/v1/atlas/registrations");
+    assert.equal(calls[0]?.init.method, "POST");
+    assert.equal((calls[0]?.init.headers as Record<string, string>).Authorization, "Bearer ow_live_test");
+    assert.deepEqual(JSON.parse(String(calls[0]?.init.body)), { name: "AcmeBot", operator: "Acme, Inc.", domain: "acme.com", tokens: ["AcmeBot"], user_agent: "AcmeBot/1.0", key_directory_url: "https://acme.com/keys", follows_robots_txt: true });
+  });
+
+  it("reads a missing proof as not verified yet, and a found one as verified", async () => {
+    const reg = { id: "areg_0123456789abcdef", status: "pending_verification", name: "AcmeBot", domain: "acme.com" };
+    const { fetch, calls } = scriptedFetch([
+      { status: 422, body: { error: "No proof found.", registration: reg } },
+      { status: 200, body: { ...reg, status: "published", agent: "https://overwing.ai/api/v1/atlas/agents/acmebot" } },
+      { status: 200, body: { registrations: [{ ...reg, status: "published" }] } },
+      { status: 200, body: { id: reg.id, status: "withdrawn" } },
+    ]);
+    const atlas = new Atlas({ apiKey: "ow_live_test", fetch, baseUrl: "https://example.test" });
+    const first = await atlas.verifyRegistration(reg.id);
+    assert.equal(first.verified, false);
+    assert.equal(!first.verified && first.error, "No proof found.");
+    assert.equal(first.registration.status, "pending_verification");
+    const second = await atlas.verifyRegistration(reg.id);
+    assert.equal(second.verified && second.registration.status, "published");
+    assert.equal(calls[1]?.url, `https://example.test/api/v1/atlas/registrations/${reg.id}/verify`);
+    assert.equal((await atlas.registrations())[0]?.status, "published");
+    assert.equal((await atlas.withdrawRegistration(reg.id)).status, "withdrawn");
+    assert.equal(calls[3]?.init.method, "DELETE");
+  });
 });

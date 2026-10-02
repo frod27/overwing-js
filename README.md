@@ -118,6 +118,25 @@ Read `verification` before you act on the claim. `Web Bot Auth signature` means 
 
 `atlas.agents({ purpose, operator, verification, q, limit })` searches the registry and `atlas.summary()` returns traffic shares and field-scan headlines. With an API key, the same client is at `new Overwing().atlas`.
 
+### Register your own agent
+
+If you run an agent or a crawler, add it to the registry so a lookup of its User-Agent names you. It is free and needs an API key.
+
+```ts
+const atlas = new Atlas({ apiKey: process.env.OVERWING_API_KEY });
+
+const reg = await atlas.register({ name: "AcmeBot", operator: "Acme, Inc.", domain: "acme.com", tokens: ["AcmeBot"], purpose: "user_fetch" });
+reg.verification?.dns;    // { type: "TXT", name: "_overwing-atlas.acme.com", value: "overwing-atlas-verification=..." }
+reg.verification?.http;   // or serve the same value at https://acme.com/.well-known/overwing-atlas.txt
+
+// publish either one, then:
+const check = await atlas.verifyRegistration(reg.id);
+if (check.verified) check.registration.status;   // "published", or "pending_review"
+else check.error;                                // not found yet: what was looked for
+```
+
+`atlas.registrations()` lists yours and `atlas.withdrawRegistration(id)` takes one out. Registration proves control of the operator's domain. A User-Agent is still a string anyone can send, so the entry is listed as user-agent only unless `keyDirectoryUrl` is a Web Bot Auth key directory on that domain.
+
 ## Beacon: is your product reachable by agents? (free)
 
 [Overwing Beacon](https://overwing.ai/beacon) checks one site and answers three questions: can an agent find it, read it, and use it. It looks for robots.txt rules for AI agents, llms.txt, an MCP server card and endpoint, an A2A agent card and an OpenAPI document, and reads the home page the way an agent does. A check is free: with a key you get the full report, saved to your dashboard; with no key you get the summary (the score, the three answers and the first fix).

@@ -115,6 +115,57 @@ export type AtlasLookup = {
 
 export type AtlasLookupLimit = { limit: number; remaining: number };
 
+export type AtlasPurpose = "training_crawl" | "search_index" | "user_fetch" | "browser_agent" | "coding_agent" | "api_agent" | "other";
+
+/** An agent you operate, to add to the registry. */
+export type AtlasRegistrationInput = {
+  /** The agent's name, e.g. "AcmeBot". */
+  name: string;
+  /** The company or person that runs it. */
+  operator: string;
+  /** The operator's domain. You prove control of it with a DNS record or a file. */
+  domain: string;
+  /** The product name the User-Agent carries, e.g. ["AcmeBot"]. One to three. */
+  tokens: string[];
+  purpose?: AtlasPurpose;
+  /** The full User-Agent string the agent sends. It must contain a token. */
+  userAgent?: string;
+  description?: string;
+  policyUrl?: string;
+  /** A Web Bot Auth key directory on the operator's domain. With one that answers, the entry is listed as signed. */
+  keyDirectoryUrl?: string;
+  followsRobotsTxt?: boolean;
+};
+
+export type AtlasRegistration = {
+  id: string;
+  status: "pending_verification" | "pending_review" | "published" | "rejected" | "withdrawn";
+  name: string;
+  operator: string;
+  domain: string;
+  tokens: string[];
+  purpose: AtlasPurpose | (string & {});
+  user_agent: string | null;
+  description: string | null;
+  policy_url: string | null;
+  key_directory_url: string | null;
+  follows_robots_txt: boolean | null;
+  /** Why it is waiting for a person, or why it was not accepted. */
+  note: string | null;
+  verified_at: string | null;
+  verified_by: "dns" | "http" | null;
+  created_at: string;
+  /** While unverified: the one value to publish at the domain, as a TXT record or as a file. */
+  verification?: { value: string; dns: { type: "TXT"; name: string; value: string }; http: { url: string; body: string }; note: string };
+  next?: string;
+  /** Once published: the registry entry. */
+  agent?: string;
+  lookup?: string;
+};
+
+/** The outcome of looking for the proof at the domain. `verified: false` means it was not there yet; ask again. */
+export type AtlasRegistrationCheck = { verified: true; registration: AtlasRegistration } | { verified: false; registration: AtlasRegistration; error: string };
+
 export type AtlasAgentList = { total: number; limit: number; offset: number; fields: "public" | "full" | (string & {}); tier: string; agents: AtlasAgent[] };
 
 export type AtlasSummary = {
