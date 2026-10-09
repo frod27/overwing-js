@@ -2,6 +2,7 @@ import { Atlas } from "./atlas.js";
 import { Beacon } from "./beacon.js";
 import { OverwingError } from "./errors.js";
 import { Transport, env } from "./http.js";
+import { Preflight } from "./preflight.js";
 import { TowerSetup } from "./tower.js";
 import type { AccountCreated, BatchItem, BatchResult, DomainCheck, DomainProof, DomainProofSteps, Evaluation, EvaluationDetail, EvaluationSummary, KeyRecovered, Me, RateLimitInfo, RecoveryStarted, RuleDefinition, RuleSet, Usage, Verdict } from "./types.js";
 
@@ -65,6 +66,8 @@ export class Overwing {
   readonly atlas: Atlas;
   /** Overwing Beacon: is a site reachable by agents? Free. With this client's key the report is the full one; `new Beacon()` with no key gets the summary. */
   readonly beacon: Beacon;
+  /** Overwing Preflight: should the agent sign this Solana transaction? `preflight.check({ transaction, policy })` needs this client's key; the record and reports need none. */
+  readonly preflight: Preflight;
   /** Overwing Tower setup: load the starter workflow, create and revoke agent identities. Agents operate through `new Tower({ agentKey })`. */
   readonly tower: TowerSetup;
 
@@ -75,6 +78,7 @@ export class Overwing {
     this.baseUrl = this.http.baseUrl;
     this.atlas = new Atlas({}, this.http);
     this.beacon = new Beacon({}, this.http);
+    this.preflight = new Preflight({}, this.http);
     this.tower = new TowerSetup(this.http);
   }
 

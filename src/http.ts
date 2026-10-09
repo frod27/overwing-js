@@ -1,7 +1,7 @@
 import { OverwingError } from "./errors.js";
 import type { OverwingErrorDetail } from "./errors.js";
 
-export const SDK_VERSION = "0.10.0";
+export const SDK_VERSION = "0.11.0";
 
 export type TransportOptions = {
   /** Defaults to https://overwing.ai, or process.env.OVERWING_BASE_URL. */
@@ -47,7 +47,7 @@ export function readError(data: unknown, status: number): { message: string; det
   return { message: String(e), detail: { body: data } };
 }
 
-/** One HTTP client shared by the Overwing, Atlas and Tower clients. `token` may be absent for keyless calls. */
+/** One HTTP client shared by the Overwing, Atlas, Beacon, Preflight and Tower clients. `token` may be absent for keyless calls. */
 export class Transport {
   readonly baseUrl: string;
   /** The options this transport was built with, so a derived client behaves the same way. */

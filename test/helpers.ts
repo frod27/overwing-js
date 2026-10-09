@@ -27,3 +27,20 @@ export function scriptedFetch(responses: Array<{ status: number; body: unknown; 
   }) as typeof fetch;
   return { fetch: f, calls };
 }
+
+export function fakeVerdict(decision: "allow" | "refuse", id = "pfc_0000000000000001") {
+  return {
+    id,
+    decision,
+    reasons: decision === "refuse" ? [{ code: "sol_out_exceeds_limit", detail: "1.2 SOL would leave; the policy allows 0.05" }] : [],
+    effects: { sol_out_lamports: decision === "refuse" ? "1200000000" : "1005000", token_out: {}, token_in: {}, control: [] },
+    programs: ["11111111111111111111111111111111"],
+    digest: "8e493754cf4c6883b79443511623dba8f410c050a5995d2c146e938a07eb6e80",
+    slot: 454679568,
+    covered: decision === "allow",
+    decided_at: "2026-10-08T22:33:53.770Z",
+    valid_for_seconds: 120,
+    receipt: { payload: {}, payload_hash: "aff3", signature: "sig", signing_key_id: "b71e", public_key: "https://overwing.ai/api/v1/tower/receipts/public-key" },
+    record_url: `https://overwing.ai/api/v1/preflight/checks/${id}`,
+  };
+}

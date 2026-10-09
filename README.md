@@ -8,7 +8,7 @@
 </p>
 
 <p align="center"><strong>Guardrails for LLM output, in one line.</strong><br>
-Vercel AI SDK middleware, OpenAI Agents SDK guardrails, and a typed client. Also: <a href="#atlas-who-is-this-user-agent-no-key-needed">Atlas</a> user-agent lookups with no key, and <a href="#tower-let-an-agent-operate-a-legacy-system">Tower</a> for agents operating legacy systems. Every model response gets a <code>pass</code> / <code>fail</code> / <code>review</code> verdict with calibrated confidence before it reaches your user.</p>
+Vercel AI SDK middleware, OpenAI Agents SDK guardrails, and a typed client. Also: <a href="#atlas-who-is-this-user-agent-no-key-needed">Atlas</a> user-agent lookups with no key, <a href="#preflight-should-the-agent-sign-this-solana-transaction">Preflight</a> for checking a Solana transaction before an agent signs it, and <a href="#tower-let-an-agent-operate-a-legacy-system">Tower</a> for agents operating legacy systems. Every model response gets a <code>pass</code> / <code>fail</code> / <code>review</code> verdict with calibrated confidence before it reaches your user.</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/overwing"><img alt="npm" src="https://img.shields.io/npm/v/overwing?color=0B1220&label=overwing"></a>
@@ -160,6 +160,79 @@ if (report.status === "complete") {
 ```
 
 A key is free: `POST https://overwing.ai/api/v1/signup` returns one, and `new Overwing({ apiKey }).beacon` uses it. An agent with a wallet and no account can pass `beacon.x402Url("example.com")` to any x402 client, pay $1 in USDC, and get the full report as the response.
+
+## Preflight: should the agent sign this Solana transaction?
+
+[Overwing Preflight](https://overwing.ai/preflight) checks one unsigned Solana transaction against your policy before an agent signs it. It simulates the transaction against the chain as it is now, works out what it would take from the wallet you name (SOL, tokens, and control of its token accounts), and answers `allow` or `refuse` with every reason. It never sees a private key and sends nothing to the chain.
+
+The check only protects an agent that cannot sign without it, so put it in the wallet. `withPreflight` wraps a wallet and returns one with the same interface:
+
+```ts
+import { withPreflight, PreflightRefused } from "overwing/solana";
+
+const wallet = withPreflight(myWallet, {
+  policy: { max_sol_out: 0.05 },                  // reads OVERWING_API_KEY; `wallet` defaults to myWallet.publicKey
+  onVerdict: (verdict) => console.log(verdict.id, verdict.decision),
+});
+
+try {
+  await wallet.signTransaction(tx);               // checked first; signed only on "allow"
+} catch (err) {
+  if (err instanceof PreflightRefused) err.verdict.reasons;   // [{ code: "sol_out_exceeds_limit", detail: "..." }]
+  else throw err;                                 // PreflightUnavailable: no verdict, nothing signed
+}
+```
+
+What it does:
+
+- Checks `signTransaction`, `signAllTransactions`, `signAndSendTransaction`, `signAndSendAllTransactions` and `sendTransaction`, whichever the wallet has. With several transactions, every one is checked and none is signed unless all are allowed.
+- Fails closed. A refusal throws `PreflightRefused` (it carries the verdict). No verdict (an HTTP error, a timeout, a malformed answer) throws `PreflightUnavailable`. Either way the wallet's own sign function is never called.
+- `onUnavailable: "allow"` signs unchecked when Preflight cannot answer (unreachable, timed out, 5xx, malformed). It never overrides a refusal, a spent allowance (429), or a request Preflight rejected as wrong (400, 401, 403) still throws, so a bad key cannot switch the check off.
+- `policy` can be a function, to set limits per transaction: `policy: (tx) => ({ max_sol_out: 0.01, allowed_programs: [...] })`.
+- `wallet.preflight.lastVerdict` holds the latest verdict, and `lastVerdicts` every verdict of the last call.
+- Works with the legacy `Transaction` and with `VersionedTransaction`. Set the fee payer and recent blockhash before signing, as the transaction is serialized for the check. This package has no Solana dependency: wallets and transactions are typed by shape.
+- `signMessage` cannot be checked. It passes through unless you set `signMessage: "refuse"`.
+
+A verdict covers a transaction that lands within `valid_for_seconds` (120), so sign and send at once. The check is advice to whoever holds the key: code that reaches the unwrapped wallet or the keypair is not protected.
+
+### Solana Agent Kit
+
+[Solana Agent Kit](https://github.com/sendaifun/solana-agent-kit) v2 takes a wallet that implements its `BaseWallet`. The wrapped wallet has the type of the wallet you gave it, so it goes straight in:
+
+```ts
+import { KeypairWallet, SolanaAgentKit } from "solana-agent-kit";
+import TokenPlugin from "@solana-agent-kit/plugin-token";
+import { withPreflight } from "overwing/solana";
+
+const wallet = withPreflight(new KeypairWallet(keypair, RPC_URL), {
+  policy: { max_sol_out: 0.05, allow_delegation: false },
+});
+
+const agent = new SolanaAgentKit(wallet, RPC_URL, {}).use(TokenPlugin);
+// Every transaction the kit's actions build is checked before the keypair signs it.
+```
+
+Checked against `solana-agent-kit` 2.0.10. Each check counts as one evaluation, and some kit actions sign more than once per transaction sent.
+
+### The client
+
+```ts
+import { Preflight } from "overwing";
+
+const preflight = new Preflight();                       // OVERWING_API_KEY, or new Overwing().preflight
+const verdict = await preflight.check({
+  transaction: tx.serialize({ requireAllSignatures: false, verifySignatures: false }),   // bytes or base64
+  policy: { wallet: "<address>", max_sol_out: 0.05, max_token_out: { "<mint>": "1000" }, allowed_programs: ["11111111111111111111111111111111"] },
+});
+if (verdict.decision !== "allow") return;                // do not sign; verdict.reasons says why
+
+await preflight.report(verdict.id, signature);           // after it lands: { outcome: "miss" | "not_a_miss", ... }
+await preflight.verdict(verdict.id);                     // the public record of one verdict
+await preflight.record();                                // totals, misses, latest verdicts
+await preflight.overview();                              // policy fields and reason codes
+```
+
+`check` needs a key and throws `OverwingError` when no verdict was given (400, 401, 429, 502). An error is not an allow. `verdict`, `report`, `record` and `overview` need no key. Give the SOL limit as `max_sol_out` or as `max_sol_out_lamports`, never both. An agent with a wallet and no account can post the same body to `preflight.x402Url()` with any x402 client and pay $0.01 in USDC.
 
 ## Tower: let an agent operate a legacy system
 
