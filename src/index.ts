@@ -3,6 +3,7 @@ export type { OverwingOptions, EvaluateOptions, ListEvaluationsOptions } from ".
 export { Atlas } from "./atlas.js";
 export type { AtlasOptions, AtlasAgentFilter } from "./atlas.js";
 export { Beacon } from "./beacon.js";
+export { Preflight, transactionToBase64 } from "./preflight.js";
 export { Tower, TowerSetup } from "./tower.js";
 export type { TowerOptions, SubmitOptions } from "./tower.js";
 export { OverwingError } from "./errors.js";

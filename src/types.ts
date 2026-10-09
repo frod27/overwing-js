@@ -338,3 +338,106 @@ export type BeaconStatus =
   | (BeaconReport & { status: "complete"; access: "full" })
   | (BeaconSummary & { status: "complete"; access: "summary" })
   | { status: "running"; id: string; url: string };
+
+// ---- Overwing Preflight ----
+
+/** Atomic units of a token, by mint address. A whole number, or a string of digits for amounts past 2^53. */
+export type PreflightTokenAmounts = Record<string, number | string>;
+
+/**
+ * What a transaction may do to the wallet, without naming the wallet. Give the SOL limit one way, never both:
+ * `max_sol_out` in SOL, or `max_sol_out_lamports` as a whole number. Fees count. 0 allows none.
+ */
+export type PreflightLimits = {
+  /** Atomic units that may leave, by mint. A mint not listed may not leave at all. */
+  max_token_out?: PreflightTokenAmounts;
+  /** Atomic units that must arrive, by mint. For a swap. */
+  min_token_in?: PreflightTokenAmounts;
+  /** When given, every program the transaction runs, top-level or inner, must be listed. */
+  allowed_programs?: string[];
+  /** Whether a spending approval on the wallet's token accounts is acceptable. Default false. */
+  allow_delegation?: boolean;
+} & ({ max_sol_out: number; max_sol_out_lamports?: never } | { max_sol_out_lamports: number | string; max_sol_out?: never });
+
+/** The policy one check is made against. `wallet` is the base58 address to protect; it must sign the transaction. */
+export type PreflightPolicy = PreflightLimits & { wallet: string };
+
+export type PreflightCheckInput = {
+  /** The serialized transaction, legacy or v0, signed or not: base64, or the bytes. */
+  transaction: string | Uint8Array;
+  policy: PreflightPolicy;
+};
+
+export type PreflightDecision = "allow" | "refuse";
+
+/** One reason to refuse. The codes are listed by `preflight.overview()`. */
+export type PreflightReason = { code: string; detail: string };
+
+/** What the simulation says would happen to the wallet. Amounts are atomic units as strings. */
+export type PreflightEffects = { sol_out_lamports: string; token_out: Record<string, string>; token_in: Record<string, string>; control: unknown[] };
+
+export type PreflightReceipt = { payload: Record<string, unknown>; payload_hash: string; signature: string; signing_key_id: string; public_key: string };
+
+export type PreflightVerdict = {
+  id: string;
+  /** The one field to branch on. Sign only on "allow". */
+  decision: PreflightDecision;
+  /** Every reason to refuse. Empty on an allow. */
+  reasons: PreflightReason[];
+  /** Null when the transaction could not be simulated. */
+  effects: PreflightEffects | null;
+  /** Every program the transaction would run. */
+  programs: string[];
+  /** sha256 of the message with its blockhash zeroed. */
+  digest: string;
+  slot: number | null;
+  /** Whether the guarantee applies: an allow made only of programs Overwing names. */
+  covered: boolean;
+  decided_at: string;
+  /** The verdict covers a transaction that lands within this many seconds. Sign and send at once. */
+  valid_for_seconds: number;
+  receipt: PreflightReceipt;
+  record_url: string;
+  if_it_goes_wrong?: string;
+};
+
+/** A verdict as published: never the wallet, the amounts or the transaction. */
+export type PreflightPublishedVerdict = {
+  id: string;
+  decision: PreflightDecision;
+  reason_codes: string[];
+  programs: string[];
+  digest: string;
+  covered: boolean;
+  slot: number | null;
+  /** How the check was paid for: "key" or "x402". */
+  channel: string;
+  decided_at: string;
+  payload_hash: string;
+  signature: string;
+  signing_key_id: string;
+};
+
+/** What the chain showed for a transaction reported against a verdict. */
+export type PreflightReport = {
+  check_id: string;
+  /** The landed transaction's signature. */
+  transaction: string;
+  outcome: "miss" | "not_a_miss";
+  why: string | null;
+  covered: boolean;
+  payout_usd: number | null;
+  [key: string]: unknown;
+};
+
+/** The public record of one verdict, with every transaction reported against it. */
+export type PreflightVerdictRecord = PreflightPublishedVerdict & { reports: Array<Record<string, unknown>> };
+
+export type PreflightRecord = {
+  totals: { checks: number; allowed: number; refused: number; covered_allows: number; reports: number; misses: number; covered_misses: number; paid_usd: number };
+  misses: Array<Record<string, unknown>>;
+  /** The latest verdicts, newest first. */
+  recent: PreflightPublishedVerdict[];
+  guarantee: { active: boolean; reserve: unknown; per_verdict_usd: number; per_wallet_monthly_usd: number; terms: string };
+  [key: string]: unknown;
+};
