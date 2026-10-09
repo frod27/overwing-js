@@ -187,7 +187,7 @@ What it does:
 
 - Checks `signTransaction`, `signAllTransactions`, `signAndSendTransaction`, `signAndSendAllTransactions` and `sendTransaction`, whichever the wallet has. With several transactions, every one is checked and none is signed unless all are allowed.
 - Fails closed. A refusal throws `PreflightRefused` (it carries the verdict). No verdict (an HTTP error, a timeout, a malformed answer) throws `PreflightUnavailable`. Either way the wallet's own sign function is never called.
-- `onUnavailable: "allow"` signs unchecked when Preflight cannot answer (unreachable, timed out, 429, 5xx, malformed). It never overrides a refusal, and a request Preflight rejected as wrong (400, 401, 403) still throws, so a bad key cannot switch the check off.
+- `onUnavailable: "allow"` signs unchecked when Preflight cannot answer (unreachable, timed out, 5xx, malformed). It never overrides a refusal, a spent allowance (429), or a request Preflight rejected as wrong (400, 401, 403) still throws, so a bad key cannot switch the check off.
 - `policy` can be a function, to set limits per transaction: `policy: (tx) => ({ max_sol_out: 0.01, allowed_programs: [...] })`.
 - `wallet.preflight.lastVerdict` holds the latest verdict, and `lastVerdicts` every verdict of the last call.
 - Works with the legacy `Transaction` and with `VersionedTransaction`. Set the fee payer and recent blockhash before signing, as the transaction is serialized for the check. This package has no Solana dependency: wallets and transactions are typed by shape.

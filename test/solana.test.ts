@@ -166,7 +166,7 @@ describe("withPreflight", () => {
     const refused = setup([{ status: 200, body: fakeVerdict("refuse") }], { onUnavailable: "allow" });
     await assert.rejects(refused.wallet.signTransaction(new FakeLegacyTransaction()), PreflightRefused);
     assert.deepEqual(refused.inner.calls, []);
-    for (const status of [400, 401]) {
+    for (const status of [400, 401, 429]) {
       const wrong = setup([{ status, body: { error: "no" } }], { onUnavailable: "allow" });
       await assert.rejects(wrong.wallet.signTransaction(new FakeLegacyTransaction()), (err: unknown) => err instanceof PreflightUnavailable && err.status === status);
       assert.deepEqual(wrong.inner.calls, []);

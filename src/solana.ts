@@ -53,9 +53,10 @@ export type WithPreflightOptions = {
   /** API key (ow_live_...), when no `client` is given. */
   apiKey?: string;
   /**
-   * When Preflight gives no verdict because it could not be reached, timed out, was out of allowance (429),
-   * failed (5xx) or gave a malformed answer: "throw" (default) signs nothing; "allow" signs unchecked.
-   * A refusal is never affected, and neither is a request Preflight rejected as wrong (400, 401, 403).
+   * When Preflight gives no verdict because it could not be reached, timed out, failed (5xx)
+   * or gave a malformed answer: "throw" (default) signs nothing; "allow" signs unchecked.
+   * A refusal is never affected, and neither is a request Preflight rejected as wrong (400, 401, 403)
+   * or a spent allowance (429): running out must not quietly switch the check off.
    */
   onUnavailable?: "throw" | "allow";
   /** `signMessage` cannot be checked. "pass" (default) leaves it as it is; "refuse" makes it throw, so raw transaction bytes cannot be signed that way. */
@@ -120,7 +121,7 @@ function addressOf(key: PublicKeyLike | null | undefined): string | null {
 /** True when the failure means Preflight could not answer, rather than that the request was wrong. */
 function couldNotAnswer(err: unknown): boolean {
   if (!(err instanceof OverwingError)) return true;
-  return err.status === 0 || err.status === 408 || err.status === 429 || err.status >= 500;
+  return err.status === 0 || err.status === 408 || err.status >= 500;
 }
 
 /**
