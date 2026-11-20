@@ -1,7 +1,7 @@
 {
   "name": "overwing",
   "version": "0.11.0",
-  "description": "Overwing SDK: guardrails for LLM output, Atlas user-agent lookups (no key needed), Beacon agent-reachability checks, Preflight checks of a Solana transaction before an agent signs it, and Tower clearance for agents operating legacy systems. Typed client, Vercel AI SDK middleware, OpenAI Agents SDK guardrails, and a Solana wallet wrapper.",
+  "description": "Overwing SDK: guardrails for LLM output, Atlas user-agent lookups (no key needed), Beacon agent-reachability checks, and Preflight checks of a Solana transaction before an agent signs it. Typed client, Vercel AI SDK middleware, OpenAI Agents SDK guardrails, and a Solana wallet wrapper.",
   "license": "MIT",
   "type": "module",
   "homepage": "https://overwing.ai",
@@ -64,7 +64,6 @@
     "user-agent",
     "bot-detection",
     "web-bot-auth",
-    "legacy-systems",
     "solana",
     "solana-agent-kit",
     "transaction-simulation",
