@@ -1,4 +1,7 @@
 name: CI
+# Every action is pinned to a commit, with its version in the comment beside it, so a tag moved
+# upstream cannot change what runs here. Dependabot proposes new pins (.github/dependabot.yml).
+# Nothing here pushes to the repository, so checkout does not leave its token on disk.
 on:
   push:
     branches: [main]
@@ -12,11 +15,15 @@ jobs:
       matrix:
         node: [22, 24]   # tests use Node's built-in TypeScript stripping (22.6+); the package itself runs on 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci
+      # Install scripts are off. No package in the lockfile has one today, so nothing is lost, and a
+      # dependency that grows one later cannot run it here.
+      - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npm test
