@@ -279,7 +279,8 @@ describe("Radar client", () => {
 });
 
 describe("verifyRadarWebhook", () => {
-  const secret = "whsec_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  // Not shaped like any provider's secret, on purpose: a scanner cannot tell a made-up value of the real shape from a leak.
+  const secret = "made-up-webhook-secret-for-tests";
   const body = JSON.stringify({ type: "swarm.incident.opened", created_at: "2026-11-20T12:00:06.000Z", data: { id: INCIDENT_ID, severity: "critical", response: { requested: false } } });
   const t = 1795348806;
   const now = new Date(t * 1000 + 2_000);
@@ -297,8 +298,8 @@ describe("verifyRadarWebhook", () => {
   });
 
   it("refuses a wrong secret", async () => {
-    assert.equal(await verifyRadarWebhook("whsec_wrong", header, body, { now }), false);
-    assert.equal(await verifyRadarWebhook(secret, sign("whsec_wrong", t, body), body, { now }), false);
+    assert.equal(await verifyRadarWebhook("another-made-up-secret", header, body, { now }), false);
+    assert.equal(await verifyRadarWebhook(secret, sign("another-made-up-secret", t, body), body, { now }), false);
     assert.equal(await verifyRadarWebhook("", header, body, { now }), false);
   });
 
