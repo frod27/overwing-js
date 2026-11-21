@@ -441,3 +441,260 @@ export type PreflightRecord = {
   guarantee: { active: boolean; reserve: unknown; per_verdict_usd: number; per_wallet_monthly_usd: number; terms: string };
   [key: string]: unknown;
 };
+
+// ---- Overwing Radar ----
+
+export type RadarOp = "read" | "write" | "list" | "delete";
+
+/**
+ * One event, as you give it to `radar.sendEvents`: who touched which artifact on which shared surface, and when.
+ * Hashes and sizes only. There is no field for an artifact's contents, and the API refuses a request that adds one.
+ */
+export type RadarEventInput = {
+  /** Your own id for the event, 1 to 100 letters, digits, `.` `_` `:` or `-`. An id sent again is stored once. */
+  id: string;
+  /** Your name for the shared surface: a cache, a queue, a bucket. Not an artifact. */
+  surfaceId: string;
+  /** The key, path or ticket that was touched. */
+  artifactId: string;
+  /** The agent or identity that did it. */
+  actorId: string;
+  /** Who the actor works for. Actors that share one are never a finding. */
+  principalId?: string | null;
+  op: RadarOp;
+  /** When it happened: a Date, an ISO 8601 time, or milliseconds since the epoch. */
+  ts: string | number | Date;
+  /** A digest of the content, for example "sha256:<hex>". Never the content. */
+  contentHash?: string | null;
+  /** On a write: the `contentHash` of the artifact this one was derived from. */
+  parentArtifactHash?: string | null;
+  sizeBytes?: number | null;
+  /** Up to 16 short labels, 1 KB in all. Not contents: keys such as `content`, `body` or `payload` are refused. */
+  metadata?: Record<string, string | number | boolean | null> | null;
+};
+
+export type RadarEventsAccepted = { accepted: number; duplicates: number; drill_id: string | null };
+
+export type RadarStatus = {
+  product: string;
+  events_this_month: number;
+  /** Null when the account has no limit. */
+  monthly_allowance: number | null;
+  monitoring: { active: boolean; status: string; current_period_end: string | null; cancel_at_period_end: boolean };
+  /** A null price means not on sale. */
+  pricing: { drill_usd: number | null; monitoring_monthly_usd: number | null; free_monthly_events: number; monitoring_monthly_events: number };
+  limits: { events_per_request: number; request_bytes: number; requests_per_minute: number; retention_days: number; surfaces: number; decoys: number };
+};
+
+export type RadarSurfaceKind = "cache" | "queue" | "bucket" | "tickets" | "memory" | "other";
+
+/** A surface as `radar.nameSurface` returns it. */
+export type RadarSurfaceNamed = { id: string; kind: RadarSurfaceKind | null; label: string | null; created_at: string };
+
+/** A surface as `radar.listSurfaces` returns it, with what it saw in the last day. */
+export type RadarSurface = RadarSurfaceNamed & { last_24h: { events: number; actors: number; last_event_at: string | null } };
+
+/** What a minted decoy is made to look like. */
+export type RadarDecoyKind = "credentials" | "export" | "notes" | "config";
+
+export type RadarDecoy = {
+  id: string;
+  /** "key": a decoy key. "artifact": an entry on a surface, minted or registered. */
+  kind: "key" | "artifact";
+  surface_id: string;
+  artifact_id: string;
+  content_hash: string;
+  label: string | null;
+  created_at: string;
+  retired_at: string | null;
+};
+
+/** A minted decoy. `content` is shown once and never stored: write it to `artifact_id` on the surface. */
+export type RadarDecoyMinted = RadarDecoy & { kind: "artifact"; content: string; content_shown_once: true; plant: string };
+
+/** A minted decoy key. `key` and `content` are shown once and never stored: keep them where real keys are kept. */
+export type RadarDecoyKeyMinted = RadarDecoy & {
+  kind: "key";
+  /** The address the key points at. Overwing answers it. */
+  base_url: string;
+  key: string;
+  /** `base_url` and `key` as lines of an env file. */
+  content: string;
+  content_shown_once: true;
+  /** Present when the address configured for decoy keys did not answer and another was used. */
+  warning?: string;
+  plant: string;
+};
+
+/** A decoy of your own making, registered. */
+export type RadarDecoyRegistered = RadarDecoy & { kind: "artifact"; plant: string };
+
+export type RadarSeverity = "low" | "medium" | "high" | "critical";
+export type RadarDetector = "decoy_credential" | "decoy_touch" | "sweep" | "convergence" | "relay_chain" | "cold_start_cluster";
+
+/** The actions a responder can carry out by itself, and so the ones it can report. */
+export type RadarResponseAction = "revoke_identity" | "block_source" | "rotate_secrets" | "quarantine_surface";
+
+/** What an incident recommends. Radar recommends and changes nothing on your systems. */
+export type RadarRecommendedAction = {
+  action: RadarResponseAction | "shorten_ttl" | "cut_write_quota" | "review_actors";
+  surface: string | null;
+  /** Who the action is about, when it is about someone. */
+  actors?: string[];
+  reason: string;
+};
+
+/** done: carried out. failed: tried and it did not work. skipped: the responder's own rules said no. dry_run: what it would have done. */
+export type RadarResponseStatus = "done" | "failed" | "skipped" | "dry_run";
+
+/** One thing your own responder reports doing about an incident, or deciding not to do. */
+export type RadarResponseInput = {
+  action: RadarResponseAction;
+  status: RadarResponseStatus;
+  /** Who or what it was done to: an identity, an address, a surface. Up to 300 characters. */
+  target?: string | null;
+  /** Up to 500 characters. */
+  detail?: string | null;
+  /** The responder's own name, for the record. Up to 80 characters. */
+  by?: string | null;
+};
+
+export type RadarResponse = { action: RadarResponseAction; target: string | null; status: RadarResponseStatus; detail: string | null; by: string | null; at: string };
+
+export type RadarResponses = {
+  incident_id: string;
+  responses: RadarResponse[];
+  /** Seconds from the incident opening to the first action carried out. Null while nothing has been. */
+  contained_in_seconds: number | null;
+};
+
+export type RadarResponseRecorded = {
+  incident_id: string;
+  recorded: true;
+  /** How many reports the incident now holds. It keeps 50. */
+  responses: number;
+  contained_in_seconds: number | null;
+};
+
+export type RadarIncident = {
+  id: string;
+  status: "open" | "closed";
+  severity: RadarSeverity;
+  title: string;
+  detectors: RadarDetector[];
+  surfaces: string[];
+  actors: string[];
+  first_event_at: string;
+  last_event_at: string;
+  opened_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  /** How a closed incident was closed: by a person, or by going quiet. */
+  closed_by: string | null;
+  drill_id: string | null;
+  recommended_actions: RadarRecommendedAction[];
+  /** Always false: Radar recommends and changes nothing on your systems. */
+  enforced: false;
+  /** What your own responder reported doing. */
+  responses: RadarResponse[];
+  contained_in_seconds: number | null;
+  /** The incident in the dashboard. */
+  url: string;
+};
+
+/** An incident as `radar.listIncidents` and `radar.closeIncident` return it. */
+export type RadarIncidentSummary = RadarIncident & { evidence_count: number };
+
+export type RadarEvidence = {
+  detector: RadarDetector;
+  /** 0 to 1. */
+  score: number;
+  summary: string;
+  surfaces: string[];
+  actors: string[];
+  artifacts: string[];
+  event_ids: string[];
+  /** ISO times of the first and last event of the evidence. */
+  from: string;
+  to: string;
+};
+
+/** One event an incident's evidence names. */
+export type RadarTimelineEvent = {
+  at: string;
+  event_id: string;
+  actor_id: string;
+  principal_id: string | null;
+  op: RadarOp;
+  surface_id: string;
+  artifact_id: string;
+  content_hash: string | null;
+  parent_artifact_hash: string | null;
+  size_bytes: number | null;
+  metadata: Record<string, string | number | boolean | null> | null;
+};
+
+/** An incident as `radar.getIncident` returns it: with its evidence and the events that evidence names, in time order. */
+export type RadarIncidentDetail = RadarIncident & {
+  evidence: RadarEvidence[];
+  /** The last webhook sent for this incident and whether the receiver took it. Null when none was sent. */
+  webhook: { type: string; at?: string; delivered?: boolean } | null;
+  timeline: RadarTimelineEvent[];
+};
+
+/** Detector thresholds. The field names are the API's own. */
+export type RadarThresholds = {
+  /** How far back a scan looks, in minutes. */
+  windowMinutes: number;
+  decoyTouch: { enabled: boolean };
+  /** One actor reads or lists this many distinct entries it did not write, inside the span. Actors in `exemptActors` (up to 50) are left out. */
+  sweep: { enabled: boolean; minArtifacts: number; windowSeconds: number; exemptActors: string[] };
+  /** Actors who are strangers to each other read one artifact and each then write, all inside the window. */
+  convergence: { enabled: boolean; minActors: number; windowSeconds: number };
+  /** One artifact's lineage passes through this many strangers, over at least this many writes. */
+  relayChain: { enabled: boolean; minActors: number; minLength: number };
+  /** This many strangers with no history first appear on one surface inside the burst. */
+  coldStart: { enabled: boolean; minActors: number; burstSeconds: number; newWithinSeconds: number };
+  /** A hit joins an open incident it touches inside the merge window; an incident with no new evidence for the quiet span closes. */
+  incident: { mergeWindowSeconds: number; quietCloseSeconds: number };
+  /** Whether an incident's webhook asks your responder to act, and from which severity. Off by default. */
+  response: { enabled: boolean; minSeverity: "high" | "critical" };
+};
+
+/** Any part of the thresholds. */
+export type RadarThresholdsInput = { [K in keyof RadarThresholds]?: RadarThresholds[K] extends object ? Partial<RadarThresholds[K]> : RadarThresholds[K] };
+
+export type RadarThresholdsState = {
+  /** The thresholds in force. */
+  thresholds: RadarThresholds;
+  /** What this account changed from the defaults. */
+  changed: RadarThresholdsInput;
+  defaults: RadarThresholds;
+};
+
+/** What `radar.sendCloudTrail` answers for a log file or an EventBridge event. `skipped` counts records that are not a call Radar reads. */
+export type RadarCloudTrailResult = { records: number; accepted: number; duplicates: number; skipped: number };
+
+/** What `radar.sendCloudTrail` answers for a body in the form of a Firehose HTTP delivery. */
+export type RadarFirehoseAck = { requestId: string; timestamp: number };
+
+/** The body of a Radar webhook. Check its signature with `verifyRadarWebhook` before reading it. */
+export type RadarIncidentWebhook = {
+  type: "swarm.incident.opened" | "swarm.incident.updated";
+  created_at: string;
+  data: {
+    id: string;
+    status: "open" | "closed";
+    severity: RadarSeverity;
+    title: string;
+    detectors: RadarDetector[];
+    surfaces: string[];
+    actors: string[];
+    first_event_at: string;
+    last_event_at: string;
+    recommended_actions: RadarRecommendedAction[];
+    /** Whether your responder is asked to act, and on what. Asked only when the account switched the response step on and the incident is severe enough. */
+    response: { requested: false } | { requested: true; actions: RadarRecommendedAction[]; report_to: string };
+    url: string;
+  };
+};

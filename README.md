@@ -234,6 +234,96 @@ await preflight.overview();                              // policy fields and re
 
 `check` needs a key and throws `OverwingError` when no verdict was given (400, 401, 429, 502). An error is not an allow. `verdict`, `report`, `record` and `overview` need no key. Give the SOL limit as `max_sol_out` or as `max_sol_out_lamports`, never both. An agent with a wallet and no account can post the same body to `preflight.x402Url()` with any x402 client and pay $0.01 in USDC.
 
+## Radar: are agents acting together on a shared store?
+
+[Overwing Radar](https://overwing.ai/radar) watches shared stores (a cache, a queue, a scratch bucket, a place where keys are kept) for agents acting together, and for one stolen login behaving like a machine. You report who touched which entry, with a hash and a size and never the contents, and Radar groups what it finds into incidents that say what to do. Radar recommends: it changes nothing on your systems.
+
+```ts
+import { Radar } from "overwing";
+
+const radar = new Radar();                       // OVERWING_API_KEY, or new Overwing().radar
+
+await radar.sendEvents([
+  { id: "evt-000001", surfaceId: "scratch-bucket", artifactId: "notes/plan.md", actorId: "agent-17", principalId: "team-a",
+    op: "read", ts: new Date(), contentHash: "sha256:9f2c0e...", sizeBytes: 812 },
+  { id: "evt-000002", surfaceId: "scratch-bucket", artifactId: "out/agent-17/step.txt", actorId: "agent-17", principalId: "team-a",
+    op: "write", ts: new Date(), contentHash: "sha256:41bd77...", parentArtifactHash: "sha256:9f2c0e...", sizeBytes: 240 },
+]);                                              // { accepted: 2, duplicates: 0, drill_id: null }
+
+const { incidents } = await radar.listIncidents({ status: "open" });
+for (const incident of incidents) {
+  incident.severity;                             // "low" | "medium" | "high" | "critical"
+  incident.detectors;                            // ["sweep"], ["decoy_touch", "sweep"], ...
+  incident.recommended_actions;                  // [{ action: "revoke_identity", surface: null, actors: ["agent-17"], reason: "..." }]
+  incident.enforced;                             // always false
+}
+
+const first = incidents[0];
+if (first) {
+  const detail = await radar.getIncident(first.id);   // adds `evidence` and a `timeline` of the events it names
+  await radar.closeIncident(first.id);                // once it is dealt with
+}
+```
+
+What to know about events:
+
+- The fields are camelCase here and are sent under the API's names (`surface_id`, `content_hash`, ...). `ts` is a `Date`, an ISO 8601 time, or milliseconds since the epoch.
+- Up to 500 events and 1,000,000 bytes a call. A batch is taken whole or not at all: one bad event refuses it, and the `OverwingError` message names it.
+- An event `id` sent again is counted once, so send the same batch again when no answer came back.
+- Send `principalId` (who the actor works for) wherever you know it. Actors that share one are never a finding.
+- Report the reads and listings, not only the writes.
+
+Every Radar call needs a key, and fails with an `OverwingError` before any request when there is none. A key of scope `swarm` can call `sendEvents`, `sendCloudTrail` and `reportResponse` and nothing else, so it is the one to put in the infrastructure you are watching. The rest needs a key of scope `full`.
+
+### A decoy key
+
+A decoy key looks like a model gateway's address and key, and nothing legitimate uses it. Keep it where real keys are kept. The first request that carries it opens a critical incident naming that place and the address the request came from.
+
+```ts
+const decoy = await radar.mintDecoy({ surfaceId: "ci-secrets", kind: "key", label: "llm gateway" });
+
+decoy.content;    // "# internal model gateway\nLLM_GATEWAY_BASE_URL=https://...\nLLM_GATEWAY_API_KEY=sk-gw-...\n"
+decoy.base_url;   // the same two values, to store in the form your own secrets take
+decoy.key;
+decoy.id;         // "swd_...": radar.retireDecoy(decoy.id) retires it
+```
+
+`key` and `content` are in the answer once and are never stored, so write them where they go at once. `surfaceId` is your name for that place; it does not have to be a surface you send events for. Use one key per place, so an incident says which place was read.
+
+`radar.mintDecoy({ surfaceId, kind })` with `kind` `"notes"`, `"credentials"`, `"export"` or `"config"` mints an entry to plant on a surface you do send events for: write `content` to `artifact_id` there and report that write with the same `content_hash`. `radar.registerDecoy({ surfaceId, artifactId, contentHash })` registers an entry of your own. `radar.listDecoys()` lists them.
+
+### The webhook
+
+If your organization has a webhook set, Radar posts `swarm.incident.opened` when an incident opens and `swarm.incident.updated` when it becomes more severe. Check the signature before you read the body:
+
+```ts
+import { verifyRadarWebhook } from "overwing";
+import type { RadarIncidentWebhook } from "overwing";
+
+export async function POST(request: Request): Promise<Response> {
+  const raw = await request.text();              // the body as it arrived, not parsed and re-serialized
+  const genuine = await verifyRadarWebhook(process.env.OVERWING_WEBHOOK_SECRET!, request.headers.get("x-overwing-signature"), raw);
+  if (!genuine) return new Response(null, { status: 401 });
+
+  const event = JSON.parse(raw) as RadarIncidentWebhook;
+  event.data.severity;                           // "critical"
+  event.data.recommended_actions;
+  event.data.response;                           // { requested: false }, or the actions your responder is asked for
+  return new Response(null, { status: 204 });
+}
+```
+
+`verifyRadarWebhook(secret, signatureHeader, rawBody, { toleranceSeconds, now })` resolves to `true` only when the `X-Overwing-Signature` header (`t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body">`) matches your webhook secret over that exact body and the timestamp is within `toleranceSeconds` of now (default 300). A missing or malformed header resolves to `false`. It uses WebCrypto, so it runs wherever the client does.
+
+The webhook asks your responder to act only if you switch that on: `radar.setThresholds({ response: { enabled: true, minSeverity: "critical" } })`. Overwing still acts on nothing. Your own code does, with your own credentials, and can put what it did on the incident's record:
+
+```ts
+await radar.reportResponse(event.data.id, { action: "revoke_identity", status: "done", target: "arn:aws:iam::111122223333:user/svc-reports", by: "responder-east" });
+await radar.listResponses(event.data.id);        // { responses: [...], contained_in_seconds: 42 }
+```
+
+Also on the client: `status()` (events this month, the allowance and the limits), `listSurfaces()` and `nameSurface(id, { kind, label })`, `getThresholds()` and `setThresholds(changes)`, and `sendCloudTrail(body)` for a CloudTrail log file or an EventBridge event. `setThresholds` replaces everything the account changed before, it does not merge with it: send every part that should differ from the defaults, or `{}` to restore them all. The guides are at [overwing.ai/radar](https://overwing.ai/radar).
+
 ## Client
 
 ```ts

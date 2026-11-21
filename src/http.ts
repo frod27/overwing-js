@@ -1,7 +1,7 @@
 import { OverwingError } from "./errors.js";
 import type { OverwingErrorDetail } from "./errors.js";
 
-export const SDK_VERSION = "0.11.1";
+export const SDK_VERSION = "0.12.0";
 
 export type TransportOptions = {
   /** Defaults to https://overwing.ai, or process.env.OVERWING_BASE_URL. */
@@ -47,11 +47,13 @@ export function readError(data: unknown, status: number): { message: string; det
   return { message: String(e), detail: { body: data } };
 }
 
-/** One HTTP client shared by the Overwing, Atlas, Beacon, Preflight and Tower clients. `token` may be absent for keyless calls. */
+/** One HTTP client shared by the Overwing, Atlas, Beacon, Preflight, Radar and Tower clients. `token` may be absent for keyless calls. */
 export class Transport {
   readonly baseUrl: string;
   /** The options this transport was built with, so a derived client behaves the same way. */
   readonly options: TransportOptions;
+  /** Whether requests carry a key. */
+  readonly hasToken: boolean;
   private readonly token: string | undefined;
   private readonly timeoutMs: number;
   private readonly maxRetries: number;
@@ -59,6 +61,7 @@ export class Transport {
 
   constructor(token: string | undefined, options: TransportOptions = {}) {
     this.token = token;
+    this.hasToken = Boolean(token);
     this.options = options;
     this.baseUrl = (options.baseUrl ?? env("OVERWING_BASE_URL") ?? "https://overwing.ai").replace(/\/$/, "");
     this.timeoutMs = options.timeoutMs ?? 15_000;

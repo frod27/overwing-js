@@ -3,6 +3,7 @@ import { Beacon } from "./beacon.js";
 import { OverwingError } from "./errors.js";
 import { Transport, env } from "./http.js";
 import { Preflight } from "./preflight.js";
+import { Radar } from "./radar.js";
 import { TowerSetup } from "./tower.js";
 import type { AccountCreated, BatchItem, BatchResult, DomainCheck, DomainProof, DomainProofSteps, Evaluation, EvaluationDetail, EvaluationSummary, KeyRecovered, Me, RateLimitInfo, RecoveryStarted, RuleDefinition, RuleSet, Usage, Verdict } from "./types.js";
 
@@ -68,6 +69,8 @@ export class Overwing {
   readonly beacon: Beacon;
   /** Overwing Preflight: should the agent sign this Solana transaction? `preflight.check({ transaction, policy })` needs this client's key; the record and reports need none. */
   readonly preflight: Preflight;
+  /** Overwing Radar: watches shared stores for agents acting together and for one stolen login behaving like a machine. Every call needs this client's key. It recommends and changes nothing on your systems. */
+  readonly radar: Radar;
   /** Overwing Tower setup: load the starter workflow, create and revoke agent identities. Agents operate through `new Tower({ agentKey })`. */
   readonly tower: TowerSetup;
 
@@ -79,6 +82,7 @@ export class Overwing {
     this.atlas = new Atlas({}, this.http);
     this.beacon = new Beacon({}, this.http);
     this.preflight = new Preflight({}, this.http);
+    this.radar = new Radar({}, this.http);
     this.tower = new TowerSetup(this.http);
   }
 
